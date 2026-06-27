@@ -181,9 +181,10 @@ from app.services import scalekit as scalekit_service
 
 class WorkflowFakeTools:
     def list_scoped_tools(self, identifier: str, **kwargs):
-        return type("ToolsResponse", (), {
-            "tools": [type("Tool", (), {"name": "gmail_create_draft"})()]
-        })()
+        definition_fields = {"name": type("StringValue", (), {"string_value": "gmail_create_draft"})()}
+        tool_obj = type("Tool", (), {"definition": type("Definition", (), {"fields": definition_fields})()})()
+        scoped_tool = type("ScopedTool", (), {"tool": tool_obj})()
+        return type("ToolsResponse", (), {"tools": [scoped_tool]})()
 
 
 class WorkflowFakeActions:

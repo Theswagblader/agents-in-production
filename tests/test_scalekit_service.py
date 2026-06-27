@@ -45,7 +45,13 @@ class FakeTools:
 
     def list_scoped_tools(self, identifier: str, **kwargs):
         self.calls.append({"identifier": identifier})
-        tools = [type("Tool", (), {"name": name})() for name in self.tool_names]
+
+        def make_tool(name: str):
+            definition_fields = {"name": type("StringValue", (), {"string_value": name})()}
+            tool_obj = type("Tool", (), {"definition": type("Definition", (), {"fields": definition_fields})()})()
+            return type("ScopedTool", (), {"tool": tool_obj})()
+
+        tools = [make_tool(name) for name in self.tool_names]
         return type("ToolsResponse", (), {"tools": tools})()
 
 

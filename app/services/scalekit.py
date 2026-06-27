@@ -80,7 +80,13 @@ def _get_scalekit_actions_client(config: ScalekitConfig) -> ScalekitActionsClien
 
 
 def _tool_names(tools_response: Any) -> set[str]:
-    return {str(tool.name) for tool in getattr(tools_response, "tools", [])}
+    names = set()
+    for tool in getattr(tools_response, "tools", []):
+        if hasattr(tool, "tool") and hasattr(tool.tool, "definition"):
+            fields = tool.tool.definition.fields
+            if "name" in fields:
+                names.add(str(fields["name"].string_value))
+    return names
 
 
 def _gmail_draft_input(config: ScalekitConfig, job: dict[str, Any]) -> dict[str, str]:
