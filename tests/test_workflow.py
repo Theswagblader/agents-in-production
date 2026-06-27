@@ -126,7 +126,7 @@ def test_jordan_wrong_job_attack_records_backend_denial_without_tool_call(client
 
     assert response.status_code == 303
     job_a = next(job for job in client.get("/jobs").json()["jobs"] if job["job_id"] == "job_a")
-    assert job_a["job_status"] == "quoted"
+    assert job_a["job_status"] == "awaiting_request"
     events = client.get("/audit").json()["events"]
     assert events[-1]["actor_id"] == "tech_jordan"
     assert events[-1]["provider"] is None
@@ -156,7 +156,7 @@ def test_wrong_job_attack_requires_jordan_and_does_not_complete_as_theo(client):
 
     assert response.status_code == 303
     job_a = next(job for job in client.get("/jobs").json()["jobs"] if job["job_id"] == "job_a")
-    assert job_a["job_status"] == "quoted"
+    assert job_a["job_status"] == "awaiting_request"
     events = client.get("/audit").json()["events"]
     assert events[-1]["actor_id"] == "tech_theo"
     assert events[-1]["provider"] is None
@@ -166,14 +166,28 @@ def test_wrong_job_attack_requires_jordan_and_does_not_complete_as_theo(client):
 
 
 def test_dashboard_renders_identity_workflow_and_audit(client):
+    # Unauthenticated: login screen shows all four actors
     response = client.get("/")
-
     assert response.status_code == 200
     assert "Sara Patel" in response.text
-    assert "Job A" in response.text
+    assert "Maya Chen" in response.text
+
+    # Logged in as Theo before approval: empty queue, attack section still visible
+    response = client.get("/", cookies={"demo_actor_id": "tech_theo"})
+    assert response.status_code == 200
+    assert "No jobs assigned yet" in response.text
     assert "Audit" in response.text
-    assert "Theo tries customer email" in response.text
-    assert "Jordan tries Theo's job" in response.text
+    assert "email customer" in response.text
+
+    # After approval Theo sees the job card
+    client.cookies.set("demo_actor_id", "manager_maya")
+    client.post("/jobs/job_a/approve", cookies={"demo_actor_id": "manager_maya"}, follow_redirects=False)
+    response = client.get("/", cookies={"demo_actor_id": "tech_theo"})
+    assert "Job A" in response.text
+
+    # Logged in as Jordan: wrong-job attack visible
+    response = client.get("/", cookies={"demo_actor_id": "tech_jordan"})
+    assert "Theo" in response.text
 
 
 from app.services import scalekit as scalekit_service

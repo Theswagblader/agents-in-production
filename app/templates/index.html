@@ -1,160 +1,357 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ShopFloor</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
-  </head>
-  <body>
-    <header class="topbar">
-      <div>
-        <h1>ShopFloor</h1>
-        <p>The model never gets a vote on whose token it uses.</p>
-      </div>
-      {% if actor %}
-        <div class="actor-pill">
-          <strong>{{ actor.display_name }}</strong>
-          <span>{{ actor.role|title }}</span>
-          <small>{{ actor.allowed_connections|join(", ") }}</small>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShopFloor</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-brand">
+    <span class="brand-mark">SF</span>
+    <div>
+      <div class="brand-name">ShopFloor</div>
+      <div class="brand-sub">Delegated agent identity &mdash; Scalekit &middot; Actian &middot; Render</div>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    {% if actor %}
+      <details class="user-menu">
+        <summary class="user-menu-trigger">
+          <div class="avatar avatar-{{ actor.role }}">{{ actor.display_name[0] }}</div>
+          <div class="user-menu-info">
+            <span class="user-menu-name">{{ actor.display_name }}</span>
+            <span class="role-chip role-{{ actor.role }}">{{ actor.role|title }}</span>
+          </div>
+          <svg class="chevron-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </summary>
+        <div class="user-menu-dropdown">
+          <div class="menu-section-label">Switch user</div>
+          {% for demo_actor in actors %}
+            {% if demo_actor.actor_id != actor.actor_id %}
+              <form method="post" action="/demo/login">
+                <input type="hidden" name="actor_id" value="{{ demo_actor.actor_id }}">
+                <button type="submit" class="menu-item">
+                  <div class="avatar avatar-sm avatar-{{ demo_actor.role }}">{{ demo_actor.display_name[0] }}</div>
+                  <div>
+                    <div class="menu-item-name">{{ demo_actor.display_name }}</div>
+                    <div class="menu-item-role">{{ demo_actor.role|title }}</div>
+                  </div>
+                </button>
+              </form>
+            {% endif %}
+          {% endfor %}
+          <div class="menu-divider"></div>
           <form method="post" action="/demo/logout">
-            <button type="submit">Switch</button>
+            <button type="submit" class="menu-item menu-item-muted">Sign out</button>
+          </form>
+          <form method="post" action="/demo/reset">
+            <button type="submit" class="menu-item menu-item-danger">Reset demo</button>
           </form>
         </div>
-      {% else %}
-        <div class="actor-pill muted">No actor selected</div>
-      {% endif %}
-    </header>
+      </details>
+    {% else %}
+      <div class="no-actor-prompt">Select a user to begin</div>
+    {% endif %}
+  </div>
+</header>
 
-    <main class="layout">
-      <section class="panel">
-        <h2>Actors</h2>
-        <div class="actor-grid">
-          {% for demo_actor in actors %}
-            <form class="actor-tile" method="post" action="/demo/login">
-              <input type="hidden" name="actor_id" value="{{ demo_actor.actor_id }}">
-              <strong>{{ demo_actor.display_name }}</strong>
-              <span>{{ demo_actor.role|title }}</span>
-              <small>
-                {% if demo_actor.actor_id == "sales_sara" %}
-                  Can send quote email
-                {% elif demo_actor.actor_id == "manager_maya" %}
-                  Can approve and write CRM
-                {% elif demo_actor.actor_id == "tech_theo" %}
-                  Assigned to Job A
-                {% else %}
-                  Not assigned to Job A
-                {% endif %}
-              </small>
-              <button type="submit">Use Actor</button>
-            </form>
-          {% endfor %}
-        </div>
-      </section>
-
-      <section class="panel workflow">
-        <div class="section-head">
-          <h2>Job A</h2>
-          <span class="status">{{ job_a.job_status }}</span>
-        </div>
-        <dl class="job-facts">
-          <div>
-            <dt>Customer</dt>
-            <dd>{{ job_a.customer_name }}</dd>
-          </div>
-          <div>
-            <dt>Vehicle</dt>
-            <dd>{{ job_a.vehicle }}</dd>
-          </div>
-          <div>
-            <dt>Concern</dt>
-            <dd>{{ job_a.symptom }}</dd>
-          </div>
-          <div>
-            <dt>Assigned Tech</dt>
-            <dd>Theo Ruiz</dd>
-          </div>
-          <div>
-            <dt>Quote</dt>
-            <dd>
-              {% if job_a.quote_amount %}
-                ${{ job_a.quote_amount }} · {{ job_a.quote_status }}
+{% if not actor %}
+  <!-- Login / user selection -->
+  <div class="login-screen">
+    <div class="login-copy">
+      <h1>Who are you?</h1>
+      <p>Each person has different delegated permissions. The agent acts as the right user &mdash; the model never gets a vote on whose token it uses.</p>
+    </div>
+    <div class="actor-cards">
+      {% for demo_actor in actors %}
+        <form method="post" action="/demo/login">
+          <input type="hidden" name="actor_id" value="{{ demo_actor.actor_id }}">
+          <button type="submit" class="actor-card">
+            <div class="actor-card-top">
+              <div class="avatar avatar-lg avatar-{{ demo_actor.role }}">{{ demo_actor.display_name[0] }}</div>
+              <div class="role-chip role-{{ demo_actor.role }}">{{ demo_actor.role|title }}</div>
+            </div>
+            <div class="actor-card-name">{{ demo_actor.display_name }}</div>
+            <div class="actor-card-desc">
+              {% if demo_actor.actor_id == "sales_sara" %}
+                Receives requests &middot; drafts &amp; sends quotes via Gmail (Scalekit)
+              {% elif demo_actor.actor_id == "manager_maya" %}
+                Approves jobs &middot; writes CRM records via Notion (Scalekit)
+              {% elif demo_actor.actor_id == "tech_theo" %}
+                Assigned to Job A &middot; completes repairs via Notion (Scalekit)
               {% else %}
-                Not drafted
+                Not assigned to Job A &middot; triggers the wrong-job denial
               {% endif %}
-            </dd>
-          </div>
-        </dl>
+            </div>
+          </button>
+        </form>
+      {% endfor %}
+    </div>
+  </div>
 
-        {% if job_a.quote_text %}
-          <p class="quote-text">{{ job_a.quote_text }}</p>
+{% else %}
+  <!-- Dashboard -->
+  <div class="dashboard">
+
+    <!-- Main workspace -->
+    <section class="workspace">
+
+      {% if actor.actor_id == "sales_sara" %}
+        {# ── Sara: Sales workflow ── #}
+        <div class="workspace-title">
+          <h2>Sales Queue</h2>
+          <span class="role-chip role-sales">Sara&rsquo;s view</span>
+        </div>
+
+        <div class="job-card">
+          <div class="job-card-head">
+            <div class="job-id-label">Job A</div>
+            <span class="status-badge status-{{ job_a.job_status }}">{{ job_a.job_status | replace('_', ' ') }}</span>
+          </div>
+          <div class="job-card-title">{{ job_a.customer_name }} &mdash; {{ job_a.vehicle }}</div>
+          <dl class="facts">
+            <div><dt>Customer</dt><dd>{{ job_a.customer_name }}</dd></div>
+            <div><dt>Email</dt><dd>{{ job_a.customer_email }}</dd></div>
+            <div><dt>Vehicle</dt><dd>{{ job_a.vehicle }}</dd></div>
+            <div><dt>Concern</dt><dd>{{ job_a.symptom }}</dd></div>
+          </dl>
+
+          {% if job_a.job_status == "awaiting_request" %}
+            <div class="action-zone">
+              <p class="action-hint">An inquiry has arrived. Click to log the inbound customer request and start the workflow.</p>
+              <form method="post" action="/jobs/job_a/receive-request">
+                <button type="submit" class="btn btn-primary">Simulate inbound customer request</button>
+              </form>
+            </div>
+
+          {% elif job_a.job_status == "pending" %}
+            <div class="action-zone">
+              <p class="action-hint">Request logged. Pull comparable repairs from Actian and generate a quote.</p>
+              <form method="post" action="/quote/draft">
+                <input type="hidden" name="job_id" value="job_a">
+                <button type="submit" class="btn btn-primary">Draft quote from Actian</button>
+              </form>
+            </div>
+
+          {% elif job_a.job_status == "quoted" %}
+            {% if job_a.quote_amount %}
+              <div class="quote-amount">${{ job_a.quote_amount }}</div>
+            {% endif %}
+            {% if job_a.quote_text %}
+              <blockquote class="quote-text">{{ job_a.quote_text }}</blockquote>
+            {% endif %}
+            {% if job_a_comparables %}
+              <div class="comparables">
+                <div class="comparables-label">Actian comparables</div>
+                {% for c in job_a_comparables %}
+                  <div class="comparable-row">
+                    <div class="comparable-vehicle">{{ c.vehicle }}</div>
+                    <div class="comparable-symptom">{{ c.symptom }}</div>
+                    <div class="comparable-price">${{ c.final_price }}</div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <div class="action-zone">
+              <p class="action-hint">Quote ready. Send it to the customer via Sara&rsquo;s connected Gmail account through Scalekit.</p>
+              <form method="post" action="/quote/send">
+                <button type="submit" class="btn btn-primary">Send quote to {{ job_a.customer_name }}</button>
+              </form>
+            </div>
+
+          {% elif job_a.job_status == "quote_sent" %}
+            {% if job_a.quote_amount %}
+              <div class="quote-amount">${{ job_a.quote_amount }}</div>
+            {% endif %}
+            {% if job_a.quote_text %}
+              <blockquote class="quote-text">{{ job_a.quote_text }}</blockquote>
+            {% endif %}
+            <div class="status-note status-ok">Quote emailed via Sara&rsquo;s Gmail &middot; Scalekit</div>
+            <div class="action-zone">
+              <p class="action-hint">Quote delivered. Formally log this job in the CRM so the manager can review and approve it.</p>
+              <form method="post" action="/jobs/job_a/submit">
+                <button type="submit" class="btn btn-primary">Create job in CRM</button>
+              </form>
+            </div>
+
+          {% elif job_a.job_status == "completed" %}
+            {% if job_a.quote_text %}
+              <blockquote class="quote-text">{{ job_a.quote_text }}</blockquote>
+            {% endif %}
+            <div class="status-note status-done">Technician completed the repair</div>
+            <div class="action-zone">
+              <p class="action-hint">Theo marked the job complete. Send the customer a completion notice via Sara&rsquo;s Gmail through Scalekit.</p>
+              <form method="post" action="/jobs/job_a/send-completion">
+                <button type="submit" class="btn btn-primary">Send completion email to {{ job_a.customer_name }}</button>
+              </form>
+            </div>
+
+          {% else %}
+            {% if job_a.quote_text %}
+              <blockquote class="quote-text">{{ job_a.quote_text }}</blockquote>
+            {% endif %}
+            {% if job_a.job_status == "closed" %}
+              <div class="status-note status-done">Completion email sent &middot; Job closed</div>
+            {% else %}
+              <div class="status-note status-ok">Quote sent &middot; Job submitted to CRM &middot; Awaiting manager approval</div>
+            {% endif %}
+          {% endif %}
+        </div>
+
+      {% elif actor.actor_id == "manager_maya" %}
+        {# ── Maya: Manager workflow ── #}
+        <div class="workspace-title">
+          <h2>All Jobs</h2>
+          <span class="role-chip role-manager">Maya&rsquo;s view</span>
+        </div>
+
+        {% if job_a.job_status in ("submitted", "approved", "completed", "closed") %}
+          <div class="job-card">
+            <div class="job-card-head">
+              <div class="job-id-label">Job A</div>
+              <span class="status-badge status-{{ job_a.job_status }}">{{ job_a.job_status | replace('_', ' ') }}</span>
+            </div>
+            <div class="job-card-title">{{ job_a.customer_name }} &mdash; {{ job_a.vehicle }}</div>
+            <dl class="facts">
+              <div><dt>Customer</dt><dd>{{ job_a.customer_name }}</dd></div>
+              <div><dt>Vehicle</dt><dd>{{ job_a.vehicle }}</dd></div>
+              <div><dt>Concern</dt><dd>{{ job_a.symptom }}</dd></div>
+              <div><dt>Quote</dt><dd>${{ job_a.quote_amount }}</dd></div>
+            </dl>
+            {% if job_a.job_status == "submitted" %}
+              <div class="action-zone">
+                <p class="action-hint">Sales submitted this job. Approve it and write the record to Maya&rsquo;s Notion workspace via Scalekit.</p>
+                <form method="post" action="/jobs/job_a/approve">
+                  <button type="submit" class="btn btn-primary">Approve job &amp; write to Notion</button>
+                </form>
+              </div>
+            {% elif job_a.job_status == "approved" %}
+              <div class="status-note status-ok">Approved &middot; CRM record written via Maya&rsquo;s Notion &middot; Scalekit</div>
+            {% elif job_a.job_status in ("completed", "closed") %}
+              <div class="status-note status-done">Completed by technician</div>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="empty-queue">
+            <div class="empty-queue-icon">&#x2713;</div>
+            <div class="empty-queue-text">No jobs pending approval</div>
+            <div class="empty-queue-sub">Jobs appear here once Sales submits a quote</div>
+          </div>
         {% endif %}
 
-        <div class="actions">
-          <form method="post" action="/quote/draft">
-            <input type="hidden" name="job_id" value="job_a">
-            <button type="submit">Draft quote from Actian</button>
-          </form>
-          <form method="post" action="/quote/send">
-            <button type="submit">Send quote as Sara</button>
-          </form>
-          <form method="post" action="/jobs/job_a/approve">
-            <button type="submit">Approve job as Maya</button>
-          </form>
-          <form method="post" action="/jobs/job_a/complete">
-            <input name="summary" value="Replaced front brake pads and resurfaced rotors.">
-            <button type="submit">Complete Job A as Theo</button>
-          </form>
+      {% elif actor.actor_id == "tech_theo" %}
+        {# ── Theo: Technician workflow ── #}
+        <div class="workspace-title">
+          <h2>My Jobs</h2>
+          <span class="role-chip role-technician">Theo&rsquo;s view</span>
         </div>
-      </section>
 
-      <section class="panel">
-        <h2>Attack Tests</h2>
-        <div class="actions">
+        {% if job_a.job_status in ("approved", "completed", "closed") %}
+          <div class="job-card">
+            <div class="job-card-head">
+              <div class="job-id-label">Job A <span class="assigned-tag">Assigned to you</span></div>
+              <span class="status-badge status-{{ job_a.job_status }}">{{ job_a.job_status | replace('_', ' ') }}</span>
+            </div>
+            <div class="job-card-title">{{ job_a.customer_name }} &mdash; {{ job_a.vehicle }}</div>
+            <dl class="facts">
+              <div><dt>Vehicle</dt><dd>{{ job_a.vehicle }}</dd></div>
+              <div><dt>Concern</dt><dd>{{ job_a.symptom }}</dd></div>
+            </dl>
+            {% if job_a.job_status == "approved" %}
+              <div class="action-zone">
+                <p class="action-hint">Manager approved. Mark it complete and log the summary via Theo&rsquo;s connected Notion account.</p>
+                <form method="post" action="/jobs/job_a/complete">
+                  <input type="hidden" name="summary" value="Replaced front brake pads and resurfaced rotors.">
+                  <button type="submit" class="btn btn-primary">Complete Job A</button>
+                </form>
+              </div>
+            {% elif job_a.job_status in ("completed", "closed") %}
+              <div class="status-note status-done">Completed &middot; {{ job_a.completion_summary }}</div>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="empty-queue">
+            <div class="empty-queue-icon">&#x2713;</div>
+            <div class="empty-queue-text">No jobs assigned yet</div>
+            <div class="empty-queue-sub">Jobs appear here once a manager approves them</div>
+          </div>
+        {% endif %}
+
+        <div class="attack-card">
+          <div class="attack-card-head">
+            <span class="attack-label">Authorization boundary test</span>
+          </div>
+          <p class="attack-desc">Theo does not have the Gmail/customer-email capability. Attempting this action will be denied by Scalekit &mdash; Theo has no delegated Gmail access.</p>
           <form method="post" action="/attack/tech-email-customer">
-            <button type="submit">Theo tries customer email</button>
-          </form>
-          <form method="post" action="/attack/complete-wrong-job">
-            <button type="submit">Jordan tries Theo's job</button>
+            <button type="submit" class="btn btn-attack">Try to email customer as Theo</button>
           </form>
         </div>
-      </section>
 
-      <section class="panel audit-panel">
-        <h2>Audit</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Actor</th>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Provider</th>
-                <th>Decision</th>
-                <th>Outcome</th>
-                <th>Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for event in audit_events %}
-                <tr>
-                  <td>{{ event.actor_name }}<br><small>{{ event.actor_role }}</small></td>
-                  <td>{{ event.action }}</td>
-                  <td>{{ event.target_id or "" }}</td>
-                  <td>{{ event.provider or "none" }}<br><small>{{ event.tool_name or "" }}</small></td>
-                  <td>{{ event.decision_source }}</td>
-                  <td><span class="outcome {{ event.outcome }}">{{ event.outcome }}</span></td>
-                  <td>{{ event.detail or "" }}</td>
-                </tr>
-              {% else %}
-                <tr>
-                  <td colspan="7" class="empty">No audit events yet.</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+      {% elif actor.actor_id == "tech_jordan" %}
+        {# ── Jordan: Wrong-job denial demo ── #}
+        <div class="workspace-title">
+          <h2>My Jobs</h2>
+          <span class="role-chip role-technician">Jordan&rsquo;s view</span>
         </div>
-      </section>
-    </main>
-  </body>
+
+        <div class="empty-queue">
+          <div class="empty-queue-icon">&#x2713;</div>
+          <div class="empty-queue-text">No jobs assigned yet</div>
+          <div class="empty-queue-sub">Jobs appear here once a manager approves them</div>
+        </div>
+
+        <div class="attack-card">
+          <div class="attack-card-head">
+            <span class="attack-label">Authorization boundary test</span>
+          </div>
+          <p class="attack-desc">Jordan is assigned to Job B, not Job A. Attempting to complete Theo&rsquo;s job will be rejected by backend trusted-state check &mdash; before any external tool call is made.</p>
+          <form method="post" action="/attack/complete-wrong-job">
+            <button type="submit" class="btn btn-attack">Try to complete Theo&rsquo;s Job A</button>
+          </form>
+        </div>
+
+      {% endif %}
+    </section>
+
+    <!-- Audit log sidebar -->
+    <aside class="audit-sidebar">
+      <div class="audit-header">
+        <h2>Audit Log</h2>
+        <span class="audit-count">{{ audit_events | length }} event{% if audit_events | length != 1 %}s{% endif %}</span>
+      </div>
+      <div class="audit-list">
+        {% if audit_events %}
+          {% for event in audit_events | reverse %}
+            <div class="audit-entry audit-entry-{{ event.outcome }}">
+              <div class="audit-entry-top">
+                <span class="audit-actor-name">{{ event.actor_name }}</span>
+                <span class="outcome-pill outcome-{{ event.outcome }}">{{ event.outcome }}</span>
+              </div>
+              <div class="audit-action-label">{{ event.action | replace('_', ' ') }}</div>
+              <div class="audit-meta-row">
+                {% if event.provider %}<span class="audit-tag">{{ event.provider }}</span>{% endif %}
+                {% if event.tool_name %}<span class="audit-tag">{{ event.tool_name }}</span>{% endif %}
+                <span class="audit-source">{{ event.decision_source | replace('_', ' ') }}</span>
+              </div>
+              {% if event.detail %}
+                <div class="audit-detail">{{ event.detail }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="audit-empty">No events yet. Start the workflow.</div>
+        {% endif %}
+      </div>
+    </aside>
+
+  </div>
+{% endif %}
+
+</body>
 </html>

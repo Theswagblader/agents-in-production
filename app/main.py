@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import json
+
 from fastapi import Cookie, FastAPI, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.actors import ACTORS
 from app.auth import get_actor_from_cookie
+from app.db import init_db
 from app.repositories import get_job, list_audit_events, list_jobs, record_audit, update_job
 from app.services.actian import draft_quote
 from app.services.scalekit import ToolResult, send_customer_email_as_actor, write_crm_record_as_actor
@@ -23,24 +26,37 @@ def healthz() -> dict[str, bool]:
     return {"ok": True}
 
 
-@app.get("/")
-def dashboard(request: Request, demo_actor_id: str | None = Cookie(default=None)):
+def _build_template_context(request: Request, demo_actor_id: str | None) -> dict:
     actor = get_actor_from_cookie(demo_actor_id)
     jobs_for_view = []
     for job in list_jobs():
         view_job = dict(job)
         view_job["label"] = "Job A" if job["job_id"] == "job_a" else "Job B"
         jobs_for_view.append(view_job)
+    job_a_data = next((j for j in jobs_for_view if j["job_id"] == "job_a"), {})
+    job_a_comparables = []
+    raw = job_a_data.get("comparables_json")
+    if raw:
+        try:
+            job_a_comparables = json.loads(raw)
+        except Exception:
+            pass
+    return {
+        "actors": list(ACTORS.values()),
+        "actor": actor,
+        "jobs": jobs_for_view,
+        "job_a": job_a_data,
+        "job_a_comparables": job_a_comparables,
+        "audit_events": list_audit_events(),
+    }
+
+
+@app.get("/")
+def dashboard(request: Request, demo_actor_id: str | None = Cookie(default=None)):
     return templates.TemplateResponse(
         request,
         "index.html",
-        {
-            "actors": list(ACTORS.values()),
-            "actor": actor,
-            "jobs": jobs_for_view,
-            "job_a": next(job for job in jobs_for_view if job["job_id"] == "job_a"),
-            "audit_events": list_audit_events(),
-        },
+        _build_template_context(request, demo_actor_id),
     )
 
 
@@ -54,6 +70,14 @@ def login(actor_id: str = Form(...)) -> RedirectResponse:
 
 @app.post("/demo/logout")
 def logout() -> RedirectResponse:
+    response = RedirectResponse("/", status_code=303)
+    response.delete_cookie("demo_actor_id")
+    return response
+
+
+@app.post("/demo/reset")
+def demo_reset() -> RedirectResponse:
+    init_db(reset=True)
     response = RedirectResponse("/", status_code=303)
     response.delete_cookie("demo_actor_id")
     return response
@@ -101,6 +125,28 @@ def _record_tool_result(
     )
 
 
+@app.post("/jobs/{job_id}/receive-request")
+def receive_request(job_id: str, demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
+    actor = get_actor_from_cookie(demo_actor_id)
+    if actor is None or actor.actor_id != "sales_sara":
+        return RedirectResponse("/", status_code=303)
+    update_job(job_id, job_status="pending")
+    record_audit(
+        actor_id=actor.actor_id,
+        actor_name=actor.display_name,
+        actor_role=actor.role,
+        action="receive_customer_request",
+        target_type="job",
+        target_id=job_id,
+        provider=None,
+        tool_name=None,
+        decision_source="backend_policy",
+        outcome="succeeded",
+        detail="Inbound customer request logged.",
+    )
+    return RedirectResponse("/", status_code=303)
+
+
 @app.post("/quote/draft")
 def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
     actor = get_actor_from_cookie(demo_actor_id)
@@ -114,6 +160,8 @@ def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(defa
         quote_amount=draft.quote_amount,
         quote_text=draft.quote_text,
         quote_status="drafted",
+        job_status="quoted",
+        comparables_json=json.dumps(draft.comparables_for_display()),
     )
     record_audit(
         actor_id=actor.actor_id,
@@ -126,7 +174,7 @@ def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(defa
         tool_name="vector_retrieval",
         decision_source="actian_retrieval",
         outcome="succeeded",
-        detail=f"{draft.detail} Comparables: {', '.join(job.job_id for job in draft.comparables)}",
+        detail=f"{draft.detail} Comparables: {', '.join(j.job_id for j in draft.comparables)}",
     )
     return RedirectResponse("/", status_code=303)
 
@@ -155,6 +203,8 @@ def quote_send(demo_actor_id: str | None = Cookie(default=None)) -> RedirectResp
         return RedirectResponse("/", status_code=303)
 
     result = send_customer_email_as_actor(actor, job)
+    if result.outcome in ("succeeded", "allowed"):
+        update_job("job_a", job_status="quote_sent")
     _record_tool_result(
         actor_id=actor.actor_id,
         actor_name=actor.display_name,
@@ -162,6 +212,66 @@ def quote_send(demo_actor_id: str | None = Cookie(default=None)) -> RedirectResp
         action="send_quote",
         target_type="job",
         target_id="job_a",
+        result=result,
+    )
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/jobs/{job_id}/submit")
+def submit_job(job_id: str, demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
+    actor = get_actor_from_cookie(demo_actor_id)
+    if actor is None or actor.actor_id != "sales_sara":
+        return RedirectResponse("/", status_code=303)
+    update_job(job_id, job_status="submitted")
+    record_audit(
+        actor_id=actor.actor_id,
+        actor_name=actor.display_name,
+        actor_role=actor.role,
+        action="submit_job_to_crm",
+        target_type="job",
+        target_id=job_id,
+        provider=None,
+        tool_name=None,
+        decision_source="backend_policy",
+        outcome="succeeded",
+        detail="Job formally submitted to CRM for manager review.",
+    )
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/jobs/{job_id}/send-completion")
+def send_completion(job_id: str, demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
+    actor = get_actor_from_cookie(demo_actor_id)
+    job = get_job(job_id)
+    if actor is None or job is None:
+        return RedirectResponse("/", status_code=303)
+
+    if actor.actor_id != "sales_sara":
+        record_audit(
+            actor_id=actor.actor_id,
+            actor_name=actor.display_name,
+            actor_role=actor.role,
+            action="send_completion_email",
+            target_type="job",
+            target_id=job_id,
+            provider=None,
+            tool_name=None,
+            decision_source="backend_policy",
+            outcome="denied",
+            detail="Only Sara can send completion emails to customers.",
+        )
+        return RedirectResponse("/", status_code=303)
+
+    result = send_customer_email_as_actor(actor, job)
+    if result.outcome in ("succeeded", "allowed"):
+        update_job(job_id, job_status="closed")
+    _record_tool_result(
+        actor_id=actor.actor_id,
+        actor_name=actor.display_name,
+        actor_role=actor.role,
+        action="send_completion_email",
+        target_type="job",
+        target_id=job_id,
         result=result,
     )
     return RedirectResponse("/", status_code=303)

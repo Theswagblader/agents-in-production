@@ -40,6 +40,7 @@ def init_db(reset: bool = False) -> None:
               manager_id TEXT,
               sales_id TEXT,
               completion_summary TEXT,
+              comparables_json TEXT,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -81,7 +82,7 @@ def init_db(reset: bool = False) -> None:
                         "2018 Honda Civic",
                         "Grinding noise when braking",
                         "needed",
-                        "quoted",
+                        "awaiting_request",
                         "tech_theo",
                         "manager_maya",
                         "sales_sara",
