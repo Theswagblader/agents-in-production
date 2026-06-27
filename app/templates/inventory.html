@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShopFloor &mdash; Inventory</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-brand">
+    <span class="brand-mark">SF</span>
+    <div>
+      <div class="brand-name">ShopFloor</div>
+      <div class="brand-sub">Scalekit &middot; Actian &middot; Render</div>
+    </div>
+  </div>
+  <nav class="topbar-nav">
+    <a href="/" class="nav-link">Jobs</a>
+    <a href="/inventory" class="nav-link nav-link-active">Inventory</a>
+  </nav>
+  <div class="topbar-right">
+    {% if actor %}
+      <details class="user-menu">
+        <summary class="user-menu-trigger">
+          <div class="avatar avatar-{{ actor.role }}">{{ actor.display_name[0] }}</div>
+          <div class="user-menu-info">
+            <span class="user-menu-name">{{ actor.display_name }}</span>
+          </div>
+          <svg class="chevron-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </summary>
+        <div class="user-menu-dropdown">
+          <div class="menu-section-label">Switch user</div>
+          {% for demo_actor in actors %}
+            <form method="post" action="/demo/login">
+              <input type="hidden" name="actor_id" value="{{ demo_actor.actor_id }}">
+              <button type="submit" class="menu-item{% if demo_actor.actor_id == actor.actor_id %} menu-item-active{% endif %}">
+                <div class="avatar avatar-sm avatar-{{ demo_actor.role }}">{{ demo_actor.display_name[0] }}</div>
+                <div>
+                  <div class="menu-item-name">{{ demo_actor.display_name }}</div>
+                  <div class="menu-item-role">{{ demo_actor.role|title }}</div>
+                </div>
+              </button>
+            </form>
+          {% endfor %}
+          <div class="menu-divider"></div>
+          <form method="post" action="/demo/logout">
+            <button type="submit" class="menu-item menu-item-muted">Sign out</button>
+          </form>
+          <form method="post" action="/demo/reset">
+            <button type="submit" class="menu-item menu-item-danger">Reset demo</button>
+          </form>
+        </div>
+      </details>
+    {% endif %}
+  </div>
+</header>
+
+<div class="dashboard">
+  <section class="workspace">
+
+    <!-- Page title + new order button -->
+    <div class="workspace-title">
+      <h2>Parts Inventory</h2>
+      <span class="role-chip role-{{ actor.role }}">{{ actor.display_name }}&rsquo;s view</span>
+      {% if actor.role in ("manager", "technician") %}
+        <button type="button" class="btn btn-primary inv-new-btn" onclick="openOrderModal()">+ New Part Order</button>
+      {% endif %}
+    </div>
+
+    <!-- Inventory table -->
+    <div class="inv-table-wrap">
+      <table class="inv-table">
+        <thead>
+          <tr>
+            <th>Part</th>
+            <th>Category</th>
+            <th>Part #</th>
+            <th>Qty</th>
+            <th>Reorder At</th>
+            <th>Unit Cost</th>
+            <th>Monthly Use</th>
+            <th>Weeks Left</th>
+            <th>Last Ordered</th>
+            <th>Supplier</th>
+            <th>Location</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in inventory %}
+            {% set weeks_left = ((item.quantity / item.monthly_usage_rate * 4.33) | round(1)) if item.monthly_usage_rate > 0 else 99 %}
+            {% set low_stock = item.quantity <= item.reorder_threshold %}
+            <tr class="{% if low_stock %}inv-row-low{% endif %}">
+              <td class="inv-name">{{ item.name }}</td>
+              <td><span class="inv-cat-chip inv-cat-{{ item.category | lower | replace(' ', '-') }}">{{ item.category }}</span></td>
+              <td class="inv-mono">{{ item.part_number }}</td>
+              <td>
+                <span class="inv-qty {% if low_stock %}inv-qty-low{% endif %}">{{ item.quantity }}</span>
+              </td>
+              <td class="inv-muted">{{ item.reorder_threshold }}</td>
+              <td class="inv-muted">${{ "%.2f" | format(item.unit_cost / 100) }}</td>
+              <td>
+                <div class="inv-usage-bar-wrap">
+                  <span class="inv-usage-num">{{ item.monthly_usage_rate }}/mo</span>
+                  <div class="inv-usage-bar">
+                    <div class="inv-usage-fill" style="width: {{ [[(item.monthly_usage_rate / 20 * 100) | int, 4] | max, 100] | min }}%"></div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="inv-weeks {% if weeks_left < 3 %}inv-weeks-critical{% elif weeks_left < 6 %}inv-weeks-warn{% endif %}">
+                  {{ weeks_left }}w
+                </span>
+              </td>
+              <td class="inv-muted">{{ item.last_ordered or '—' }}</td>
+              <td class="inv-muted inv-supplier">{{ item.supplier_name }}</td>
+              <td class="inv-mono inv-muted">{{ item.location or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Part orders section -->
+    <div class="workspace-title" style="margin-top: 24px;">
+      <h2>Part Orders</h2>
+      <span class="inv-order-count">{{ part_orders | length }} order{% if part_orders | length != 1 %}s{% endif %}</span>
+    </div>
+
+    {% if part_orders %}
+      <div class="inv-orders-list">
+        {% for order in part_orders %}
+          <div class="inv-order-card inv-order-{{ order.status }}">
+            <div class="inv-order-head">
+              <div class="inv-order-meta">
+                <span class="inv-order-id">{{ order.order_id }}</span>
+                <span class="inv-order-status-badge inv-status-{{ order.status }}">{{ order.status | replace('_', ' ') }}</span>
+              </div>
+              <div class="inv-order-actions">
+                {% if order.status == "pending_approval" and actor.actor_id == "manager_maya" %}
+                  <form method="post" action="/inventory/order/{{ order.order_id }}/approve" style="display:inline">
+                    <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+                  </form>
+                {% endif %}
+                {% if order.status == "approved" and actor.actor_id == "manager_maya" %}
+                  <button type="button" class="btn btn-primary btn-sm" onclick="openEmailModal('{{ order.order_id }}', '{{ order.item_name | replace("'", "\\'") }}', '{{ order.part_number }}', {{ order.quantity_ordered }}, '{{ order.supplier_name | replace("'", "\\'") }}', '{{ order.supplier_email }}')">Send Email</button>
+                {% endif %}
+              </div>
+            </div>
+            <div class="inv-order-body">
+              <div class="inv-order-field">
+                <span class="inv-order-label">Part</span>
+                <span class="inv-order-value">{{ order.item_name }}</span>
+              </div>
+              <div class="inv-order-field">
+                <span class="inv-order-label">Part #</span>
+                <span class="inv-order-value inv-mono">{{ order.part_number }}</span>
+              </div>
+              <div class="inv-order-field">
+                <span class="inv-order-label">Qty</span>
+                <span class="inv-order-value">{{ order.quantity_ordered }}</span>
+              </div>
+              <div class="inv-order-field">
+                <span class="inv-order-label">Requested by</span>
+                <span class="inv-order-value">{{ order.requested_by_name }}</span>
+              </div>
+              <div class="inv-order-field">
+                <span class="inv-order-label">Supplier</span>
+                <span class="inv-order-value">{{ order.supplier_name }}</span>
+              </div>
+              <div class="inv-order-field">
+                <span class="inv-order-label">Created</span>
+                <span class="inv-order-value inv-muted">{{ order.created_at[:10] }}</span>
+              </div>
+            </div>
+            {% if order.notes %}
+              <div class="inv-order-notes">{{ order.notes }}</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-queue">
+        <div class="empty-queue-icon">&#x2713;</div>
+        <div class="empty-queue-text">No part orders yet</div>
+        <div class="empty-queue-sub">Create a new order above</div>
+      </div>
+    {% endif %}
+
+  </section>
+
+  <!-- Audit sidebar -->
+  <aside class="audit-sidebar">
+    <div class="audit-header">
+      <h2>Audit Log</h2>
+      <span class="audit-count">{{ audit_events | length }} event{% if audit_events | length != 1 %}s{% endif %}</span>
+    </div>
+    <div class="audit-list">
+      {% if audit_events %}
+        {% for event in audit_events | reverse %}
+          <div class="audit-entry audit-entry-{{ event.outcome }}">
+            <div class="audit-entry-top">
+              <span class="audit-actor-name">{{ event.actor_name }}</span>
+              <span class="outcome-pill outcome-{{ event.outcome }}">{{ event.outcome }}</span>
+            </div>
+            <div class="audit-action-label">{{ event.action | replace('_', ' ') }}</div>
+            <div class="audit-meta-row">
+              {% if event.provider %}<span class="audit-tag">{{ event.provider }}</span>{% endif %}
+              {% if event.tool_name %}<span class="audit-tag">{{ event.tool_name }}</span>{% endif %}
+              <span class="audit-source">{{ event.decision_source | replace('_', ' ') }}</span>
+            </div>
+            {% if event.detail %}
+              <div class="audit-detail">{{ event.detail }}</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="audit-empty">No events yet.</div>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+
+<!-- New Part Order modal -->
+<div id="order-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeOrderModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">New Part Order</span>
+      <button type="button" class="modal-close" onclick="closeOrderModal()" aria-label="Close">&times;</button>
+    </div>
+    <form method="post" action="/inventory/order/create" id="order-form">
+      <div class="modal-field">
+        <label class="modal-label" for="order-item">Part</label>
+        <select id="order-item" name="item_id" class="modal-input" required onchange="updateOrderDefaults(this)">
+          <option value="">Select a part…</option>
+          {% for item in inventory %}
+            <option value="{{ item.item_id }}"
+              data-name="{{ item.name }}"
+              data-pn="{{ item.part_number }}"
+              data-supplier="{{ item.supplier_name }}"
+              data-email="{{ item.supplier_email }}">
+              {{ item.name }} ({{ item.part_number }}) — {{ item.quantity }} in stock
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="order-qty">Quantity</label>
+        <input id="order-qty" name="quantity_ordered" class="modal-input" type="number" min="1" value="1" required>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="order-notes">Notes (optional)</label>
+        <input id="order-notes" name="notes" class="modal-input" type="text" placeholder="e.g. urgent — down to last unit">
+      </div>
+
+      {% if actor.role == "manager" %}
+        <!-- Manager sees the email compose fields inline -->
+        <div class="modal-divider-label">Email to supplier (sent immediately on create)</div>
+        <div class="modal-field">
+          <label class="modal-label" for="order-subject">Subject</label>
+          <input id="order-subject" name="email_subject" class="modal-input" type="text" placeholder="Auto-filled when you pick a part">
+        </div>
+        <div class="modal-field">
+          <label class="modal-label" for="order-body">Body</label>
+          <textarea id="order-body" name="email_body" class="modal-textarea" rows="7" placeholder="Auto-filled when you pick a part"></textarea>
+        </div>
+      {% else %}
+        <!-- Technician: hidden fields, no email compose -->
+        <input type="hidden" name="email_subject" value="">
+        <input type="hidden" name="email_body" value="">
+        <div class="modal-info-box">
+          This order will be sent to Maya for approval before an email is sent to the supplier.
+        </div>
+      {% endif %}
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeOrderModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+          {% if actor.role == "manager" %}Create &amp; Send Email{% else %}Submit for Approval{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Send Email modal (manager approves a tech order then sends) -->
+<div id="email-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeEmailModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Send Part Order Email</span>
+      <button type="button" class="modal-close" onclick="closeEmailModal()" aria-label="Close">&times;</button>
+    </div>
+    <form method="post" id="email-send-form">
+      <div class="modal-field">
+        <label class="modal-label">To</label>
+        <input id="email-to-display" class="modal-input modal-input-readonly" type="text" readonly>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="send-subject">Subject</label>
+        <input id="send-subject" name="subject" class="modal-input" type="text">
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="send-body">Body</label>
+        <textarea id="send-body" name="body" class="modal-textarea" rows="8"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeEmailModal()">Discard</button>
+        <button type="submit" class="btn btn-primary">Send via Gmail</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function openOrderModal() {
+    document.getElementById('order-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeOrderModal() {
+    document.getElementById('order-modal').style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('order-form').reset();
+  }
+
+  function updateOrderDefaults(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    var name = opt.getAttribute('data-name');
+    var pn   = opt.getAttribute('data-pn');
+    var sup  = opt.getAttribute('data-supplier');
+    var qty  = document.getElementById('order-qty').value || '1';
+
+    var subjectEl = document.getElementById('order-subject');
+    var bodyEl    = document.getElementById('order-body');
+    if (subjectEl) subjectEl.value = 'Part Order Request: ' + name + ' (' + pn + ')';
+    if (bodyEl) bodyEl.value =
+      'Dear ' + sup + ',\n\n' +
+      'We would like to place an order for the following part:\n\n' +
+      '  Part: ' + name + '\n' +
+      '  Part Number: ' + pn + '\n' +
+      '  Quantity: ' + qty + '\n\n' +
+      'Please confirm availability and expected delivery timeline.\n\n' +
+      'Thank you,\nMaya Chen\nShopFloor Manager';
+  }
+
+  document.getElementById('order-qty') && document.getElementById('order-qty').addEventListener('input', function() {
+    var sel = document.getElementById('order-item');
+    if (sel && sel.value) updateOrderDefaults(sel);
+  });
+
+  function openEmailModal(orderId, itemName, partNumber, qty, supplierName, supplierEmail) {
+    var modal = document.getElementById('email-modal');
+    var form  = document.getElementById('email-send-form');
+    form.action = '/inventory/order/' + orderId + '/send-email';
+    document.getElementById('email-to-display').value = supplierEmail;
+    document.getElementById('send-subject').value =
+      'Part Order Request: ' + itemName + ' (' + partNumber + ')';
+    document.getElementById('send-body').value =
+      'Dear ' + supplierName + ',\n\n' +
+      'We would like to place an order for the following part:\n\n' +
+      '  Part: ' + itemName + '\n' +
+      '  Part Number: ' + partNumber + '\n' +
+      '  Quantity: ' + qty + '\n\n' +
+      'Please confirm availability and expected delivery timeline.\n\n' +
+      'Thank you,\nMaya Chen\nShopFloor Manager';
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeEmailModal() {
+    document.getElementById('email-modal').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeOrderModal(); closeEmailModal(); }
+  });
+</script>
+</body>
+</html>

@@ -217,6 +217,132 @@ def send_customer_email_as_actor(
     )
 
 
+def send_supplier_email_as_actor(
+    actor: Actor,
+    order: dict[str, Any],
+    subject_override: str | None = None,
+    body_override: str | None = None,
+) -> ToolResult:
+    """Send a part order email to the supplier on behalf of the manager (Maya)."""
+    config = ScalekitConfig.from_env()
+    supplier_email = str(order.get("supplier_email", ""))
+    supplier_name = str(order.get("supplier_name", "the supplier"))
+    item_name = str(order.get("item_name", order.get("name", "the part")))
+    part_number = str(order.get("part_number", ""))
+    qty = int(order.get("quantity_ordered", 1))
+    order_id = str(order.get("order_id", ""))
+
+    default_subject = f"Part Order Request: {item_name} ({part_number})"
+    default_body = (
+        f"Dear {supplier_name},\n\n"
+        f"We would like to place an order for the following part:\n\n"
+        f"  Part: {item_name}\n"
+        f"  Part Number: {part_number}\n"
+        f"  Quantity: {qty}\n"
+        f"  Order Reference: {order_id}\n\n"
+        f"Please confirm availability and expected delivery timeline.\n\n"
+        f"Thank you,\nMaya Chen\nShopFloor Manager"
+    )
+
+    subject = subject_override or default_subject
+    body = body_override or default_body
+    to = config.demo_to_email or supplier_email
+
+    if config.mode == "real":
+        missing = config.missing_real_mode_vars()
+        if missing:
+            return ToolResult(
+                ok=False,
+                outcome="failed",
+                provider="gmail",
+                tool_name=None,
+                decision_source="scalekit_config",
+                detail=f"Missing required Scalekit env vars for real mode: {', '.join(missing)}.",
+            )
+
+        try:
+            actions = _get_scalekit_actions_client(config)
+            try:
+                from scalekit.v1.tools.tools_pb2 import ScopedToolFilter
+                scoped_filter = ScopedToolFilter(connection_names=[config.gmail_connection_name])
+            except ImportError:
+                scoped_filter = None
+
+            list_kwargs: dict[str, Any] = {"identifier": actor.scalekit_identifier}
+            if scoped_filter is not None:
+                list_kwargs["filter"] = scoped_filter
+
+            tools_response = actions.tools.list_scoped_tools(**list_kwargs)
+        except Exception as exc:
+            return ToolResult(
+                ok=False,
+                outcome="denied",
+                provider="gmail",
+                tool_name=config.gmail_send_tool_name,
+                decision_source="scalekit_tool_scope",
+                detail=(
+                    f"REAL Scalekit denial: {actor.display_name} cannot send supplier email "
+                    f"({exc.__class__.__name__}: {exc})."
+                ),
+            )
+
+        if config.gmail_send_tool_name not in _tool_names(tools_response):
+            return ToolResult(
+                ok=False,
+                outcome="denied",
+                provider="gmail",
+                tool_name=config.gmail_send_tool_name,
+                decision_source="scalekit_tool_scope",
+                detail=f"REAL Scalekit denial: {actor.display_name} does not have Gmail send in scoped tools.",
+            )
+
+        try:
+            execution = actions.execute_tool(
+                tool_input={"to": to, "subject": subject, "body": body},
+                tool_name=str(config.gmail_send_tool_name),
+                identifier=actor.scalekit_identifier,
+            )
+        except Exception as exc:
+            return ToolResult(
+                ok=False,
+                outcome="failed",
+                provider="gmail",
+                tool_name=config.gmail_send_tool_name,
+                decision_source="scalekit_execute_tool",
+                detail=f"REAL Scalekit Gmail execution failed ({exc.__class__.__name__}: {exc}).",
+            )
+
+        return ToolResult(
+            ok=True,
+            outcome="succeeded",
+            provider="gmail",
+            tool_name=config.gmail_send_tool_name,
+            decision_source="scalekit_execute_tool",
+            detail=f"REAL Gmail supplier order email via Scalekit as {actor.display_name} to {to}.",
+            external_request_id=getattr(execution, "execution_id", None),
+        )
+
+    # Stub mode — only manager_maya can send supplier emails
+    if actor.actor_id != "manager_maya":
+        return ToolResult(
+            ok=False,
+            outcome="denied",
+            provider="gmail",
+            tool_name="gmail.send_email",
+            decision_source="scalekit_tool_scope",
+            detail=f"STUBBED denial: {actor.display_name} has not delegated Gmail supplier-email access.",
+        )
+    return ToolResult(
+        ok=True,
+        outcome="succeeded",
+        provider="gmail",
+        tool_name="gmail.send_email",
+        decision_source="scalekit_execute_tool",
+        detail=f"STUBBED Gmail supplier email as {actor.display_name} to {supplier_email} for order {order_id}.",
+        external_request_id=f"stub-gmail-supplier-{order_id}",
+    )
+
+
 def write_crm_record_as_actor(actor: Actor, job: dict[str, Any], action: str) -> ToolResult:
     if actor.actor_id == "manager_maya":
         return ToolResult(

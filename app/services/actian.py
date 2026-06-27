@@ -3,6 +3,7 @@ from dataclasses import asdict, dataclass
 from statistics import mean
 
 COLLECTION_NAME = "repair_jobs"
+INVENTORY_COLLECTION_NAME = "inventory_items"
 VECTOR_SIZE = 384  # all-MiniLM-L6-v2 output dimension
 
 _SEED_JOBS = [
@@ -232,6 +233,55 @@ def _stub_comparables() -> tuple[ComparableJob, ...]:
                       ("front brake pads", "front rotors", "caliper service"), 3.0, 570,
                       "Caliper pins cleaned and lubricated."),
     )
+
+
+_SEED_INVENTORY = [
+    {"item_id": "inv_001", "part_number": "BP-CER-F-001", "name": "Ceramic Front Brake Pads", "category": "Brakes", "quantity": 12, "reorder_threshold": 8, "unit_cost": 4200, "supplier_name": "BrakePro Supply Co.", "supplier_email": "orders@brakepro.example.com", "monthly_usage_rate": 6.5},
+    {"item_id": "inv_002", "part_number": "BR-ROT-F-001", "name": "Front Brake Rotors (pair)", "category": "Brakes", "quantity": 6, "reorder_threshold": 4, "unit_cost": 8900, "supplier_name": "BrakePro Supply Co.", "supplier_email": "orders@brakepro.example.com", "monthly_usage_rate": 4.0},
+    {"item_id": "inv_003", "part_number": "BP-CER-R-001", "name": "Ceramic Rear Brake Pads", "category": "Brakes", "quantity": 3, "reorder_threshold": 6, "unit_cost": 3800, "supplier_name": "BrakePro Supply Co.", "supplier_email": "orders@brakepro.example.com", "monthly_usage_rate": 5.0},
+    {"item_id": "inv_004", "part_number": "BR-ROT-R-001", "name": "Rear Brake Rotors (pair)", "category": "Brakes", "quantity": 4, "reorder_threshold": 4, "unit_cost": 7600, "supplier_name": "BrakePro Supply Co.", "supplier_email": "orders@brakepro.example.com", "monthly_usage_rate": 3.2},
+    {"item_id": "inv_005", "part_number": "OIL-5W30-5L", "name": "Motor Oil 5W-30 (5qt jug)", "category": "Fluids", "quantity": 24, "reorder_threshold": 12, "unit_cost": 2800, "supplier_name": "FluidTech Distributors", "supplier_email": "supply@fluidtech.example.com", "monthly_usage_rate": 18.0},
+    {"item_id": "inv_006", "part_number": "OIL-FLT-OEM", "name": "OEM Oil Filter (universal)", "category": "Filters", "quantity": 30, "reorder_threshold": 15, "unit_cost": 850, "supplier_name": "FluidTech Distributors", "supplier_email": "supply@fluidtech.example.com", "monthly_usage_rate": 17.5},
+    {"item_id": "inv_007", "part_number": "SPK-PLG-IRD", "name": "Iridium Spark Plugs (set/4)", "category": "Ignition", "quantity": 8, "reorder_threshold": 6, "unit_cost": 3200, "supplier_name": "AutoSpark Parts", "supplier_email": "parts@autospark.example.com", "monthly_usage_rate": 3.8},
+    {"item_id": "inv_008", "part_number": "IGN-COIL-OEM", "name": "Ignition Coil Pack", "category": "Ignition", "quantity": 5, "reorder_threshold": 4, "unit_cost": 6500, "supplier_name": "AutoSpark Parts", "supplier_email": "parts@autospark.example.com", "monthly_usage_rate": 2.1},
+    {"item_id": "inv_009", "part_number": "AIR-FLT-UNI", "name": "Engine Air Filter (universal)", "category": "Filters", "quantity": 14, "reorder_threshold": 8, "unit_cost": 1200, "supplier_name": "FluidTech Distributors", "supplier_email": "supply@fluidtech.example.com", "monthly_usage_rate": 9.0},
+    {"item_id": "inv_010", "part_number": "CAB-FLT-UNI", "name": "Cabin Air Filter (universal)", "category": "Filters", "quantity": 11, "reorder_threshold": 8, "unit_cost": 1100, "supplier_name": "FluidTech Distributors", "supplier_email": "supply@fluidtech.example.com", "monthly_usage_rate": 8.5},
+    {"item_id": "inv_011", "part_number": "BAT-12V-AGM", "name": "12V AGM Battery (group 35)", "category": "Electrical", "quantity": 4, "reorder_threshold": 3, "unit_cost": 14500, "supplier_name": "PowerCell Auto Batteries", "supplier_email": "orders@powercell.example.com", "monthly_usage_rate": 1.8},
+    {"item_id": "inv_012", "part_number": "ALT-OEM-UNI", "name": "Alternator (reman, universal)", "category": "Electrical", "quantity": 2, "reorder_threshold": 2, "unit_cost": 21000, "supplier_name": "PowerCell Auto Batteries", "supplier_email": "orders@powercell.example.com", "monthly_usage_rate": 0.9},
+    {"item_id": "inv_013", "part_number": "TRN-FLD-ATF", "name": "ATF Transmission Fluid (1qt)", "category": "Fluids", "quantity": 18, "reorder_threshold": 10, "unit_cost": 1400, "supplier_name": "FluidTech Distributors", "supplier_email": "supply@fluidtech.example.com", "monthly_usage_rate": 12.0},
+    {"item_id": "inv_014", "part_number": "TRN-FLT-OEM", "name": "Transmission Filter Kit", "category": "Filters", "quantity": 5, "reorder_threshold": 4, "unit_cost": 3600, "supplier_name": "FluidTech Distributors", "supplier_email": "supply@fluidtech.example.com", "monthly_usage_rate": 2.5},
+    {"item_id": "inv_015", "part_number": "SUS-SBL-UNI", "name": "Sway Bar End Links (pair)", "category": "Suspension", "quantity": 6, "reorder_threshold": 4, "unit_cost": 5200, "supplier_name": "SuspensionPro Parts", "supplier_email": "parts@suspensionpro.example.com", "monthly_usage_rate": 2.8},
+    {"item_id": "inv_016", "part_number": "SUS-CAB-UNI", "name": "Control Arm Bushings (set)", "category": "Suspension", "quantity": 4, "reorder_threshold": 3, "unit_cost": 4800, "supplier_name": "SuspensionPro Parts", "supplier_email": "parts@suspensionpro.example.com", "monthly_usage_rate": 2.0},
+    {"item_id": "inv_017", "part_number": "CLT-HSE-UPP", "name": "Upper Coolant Hose", "category": "Cooling", "quantity": 5, "reorder_threshold": 4, "unit_cost": 2200, "supplier_name": "CoolSys Auto Parts", "supplier_email": "supply@coolsys.example.com", "monthly_usage_rate": 2.3},
+    {"item_id": "inv_018", "part_number": "CLT-THR-OEM", "name": "Thermostat + Housing Kit", "category": "Cooling", "quantity": 6, "reorder_threshold": 4, "unit_cost": 3100, "supplier_name": "CoolSys Auto Parts", "supplier_email": "supply@coolsys.example.com", "monthly_usage_rate": 2.6},
+    {"item_id": "inv_019", "part_number": "REF-R134A-L", "name": "R-134a Refrigerant (12oz can)", "category": "AC", "quantity": 9, "reorder_threshold": 6, "unit_cost": 1800, "supplier_name": "CoolSys Auto Parts", "supplier_email": "supply@coolsys.example.com", "monthly_usage_rate": 4.5},
+    {"item_id": "inv_020", "part_number": "VCG-OEM-UNI", "name": "Valve Cover Gasket Kit", "category": "Engine", "quantity": 3, "reorder_threshold": 3, "unit_cost": 2900, "supplier_name": "BrakePro Supply Co.", "supplier_email": "orders@brakepro.example.com", "monthly_usage_rate": 1.2},
+]
+
+
+def seed_inventory_collection() -> None:
+    """Create the inventory collection in Actian and upsert seed items. Safe to call multiple times."""
+    from actian_vectorai import Distance, PointStruct, VectorParams
+
+    with _get_client() as client:
+        existing = [c["name"] for c in (client.collections.list() or [])]
+        if INVENTORY_COLLECTION_NAME not in existing:
+            client.collections.create(
+                name=INVENTORY_COLLECTION_NAME,
+                vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.Cosine),
+            )
+
+        points = []
+        for i, item in enumerate(_SEED_INVENTORY):
+            embedding_text = f"{item['name']} {item['category']} {item['part_number']}"
+            points.append(
+                PointStruct(
+                    id=i + 1,
+                    vector=_embed(embedding_text),
+                    payload=item,
+                )
+            )
+        client.points.upsert(collection_name=INVENTORY_COLLECTION_NAME, points=points)
 
 
 def draft_quote(vehicle: str, symptom: str, concern: str) -> QuoteDraft:
