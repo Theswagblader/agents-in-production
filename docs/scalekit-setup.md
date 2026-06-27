@@ -7,14 +7,12 @@ Use this to set up the real delegated-auth demo path: Sara sends Gmail through S
 1. Open the Scalekit dashboard.
 2. Select the same development environment used by this app.
 3. Go to the Connections area.
-4. Create or confirm a Gmail connection.
-5. Set the connection slug/name to `gmail`, or copy the actual slug into:
+4. Confirm the Gmail connection exists. The connector name is `gmail-aiAPaZbo`.
+5. Set:
 
 ```text
-SCALEKIT_GMAIL_CONNECTION_NAME=<actual slug>
+SCALEKIT_GMAIL_CONNECTION_NAME=gmail-aiAPaZbo
 ```
-
-The app defaults to `gmail`.
 
 ## 2. Copy API Credentials
 
@@ -34,28 +32,7 @@ Do not commit real values.
 
 Use identifier `sales_sara`. That must match `Actor.scalekit_identifier` in `app/actors.py`.
 
-Temporary local helper:
-
-```bash
-.venv/bin/python - <<'PY'
-import os
-from scalekit import ScalekitClient
-
-client = ScalekitClient(
-    env_url=os.environ["SCALEKIT_ENV_URL"],
-    client_id=os.environ["SCALEKIT_CLIENT_ID"],
-    client_secret=os.environ["SCALEKIT_CLIENT_SECRET"],
-)
-
-link = client.actions.get_authorization_link(
-    identifier="sales_sara",
-    connection_name=os.environ.get("SCALEKIT_GMAIL_CONNECTION_NAME", "gmail"),
-)
-print(link.link)
-PY
-```
-
-Open the printed link and authorize the demo Gmail account for Sara.
+Sara's Gmail account is already authorized and ACTIVE in the Scalekit dashboard. No action needed if already done.
 
 ## 4. Decide Theo's Denial Mechanism
 
@@ -69,7 +46,7 @@ Acceptable fallback:
 
 Do not leave Theo with a Gmail send tool that can send customer email. The hero demo requires Theo's email attempt to deny.
 
-## 5. Discover The Gmail Send Tool Name
+## 5. Discover The Gmail Draft Tool Name
 
 Run this after Sara authorizes Gmail:
 
@@ -77,6 +54,7 @@ Run this after Sara authorizes Gmail:
 .venv/bin/python - <<'PY'
 import os
 from scalekit import ScalekitClient
+from scalekit.v1.tools.tools_pb2 import ScopedToolFilter
 
 client = ScalekitClient(
     env_url=os.environ["SCALEKIT_ENV_URL"],
@@ -84,12 +62,12 @@ client = ScalekitClient(
     client_secret=os.environ["SCALEKIT_CLIENT_SECRET"],
 )
 
-response = client.actions.tools.list_scoped_tools(
+resp = client.tools.list_scoped_tools(
     identifier="sales_sara",
-    page_size=100,
+    filter=ScopedToolFilter(connection_names=["gmail-aiAPaZbo"])
 )
 
-for tool in response.tools:
+for tool in resp.tools:
     name = getattr(tool, "name", "")
     description = getattr(tool, "description", "")
     if "gmail" in name.lower() or "mail" in name.lower() or "email" in description.lower():
@@ -97,15 +75,15 @@ for tool in response.tools:
 PY
 ```
 
-Pick the tool that sends an email. Set:
+Pick the tool that creates a Gmail draft. The tool name is `gmail_create_draft`. Set:
 
 ```text
-SCALEKIT_GMAIL_SEND_TOOL_NAME=<exact tool name from output>
+SCALEKIT_GMAIL_SEND_TOOL_NAME=gmail_create_draft
 ```
 
 Do not guess this value.
 
-## 6. Confirm Theo Does Not Have The Send Tool
+## 6. Confirm Theo Does Not Have The Draft Tool
 
 Run:
 
@@ -113,6 +91,7 @@ Run:
 .venv/bin/python - <<'PY'
 import os
 from scalekit import ScalekitClient
+from scalekit.v1.tools.tools_pb2 import ScopedToolFilter
 
 client = ScalekitClient(
     env_url=os.environ["SCALEKIT_ENV_URL"],
@@ -121,13 +100,13 @@ client = ScalekitClient(
 )
 
 send_tool = os.environ["SCALEKIT_GMAIL_SEND_TOOL_NAME"]
-response = client.actions.tools.list_scoped_tools(
+resp = client.tools.list_scoped_tools(
     identifier="tech_theo",
-    page_size=100,
+    filter=ScopedToolFilter(connection_names=["gmail-aiAPaZbo"])
 )
-names = [getattr(tool, "name", "") for tool in response.tools]
+names = [getattr(tool, "name", "") for tool in resp.tools]
 print("Theo tool count:", len(names))
-print("Has Gmail send:", send_tool in names)
+print("Has Gmail draft:", send_tool in names)
 for name in names:
     if "gmail" in name.lower() or "mail" in name.lower():
         print(name)
@@ -137,7 +116,7 @@ PY
 Expected:
 
 ```text
-Has Gmail send: False
+Has Gmail draft: False
 ```
 
 If it prints `True`, remove or narrow Theo's Gmail delegation before demoing.
@@ -151,8 +130,8 @@ SCALEKIT_MODE=real
 SCALEKIT_ENV_URL=<your Scalekit env URL>
 SCALEKIT_CLIENT_ID=<client id>
 SCALEKIT_CLIENT_SECRET=<client secret>
-SCALEKIT_GMAIL_CONNECTION_NAME=gmail
-SCALEKIT_GMAIL_SEND_TOOL_NAME=<exact discovered send tool>
+SCALEKIT_GMAIL_CONNECTION_NAME=gmail-aiAPaZbo
+SCALEKIT_GMAIL_SEND_TOOL_NAME=gmail_create_draft
 SHOPFLOOR_FROM_EMAIL=<Sara demo Gmail address if the tool schema requires it>
 SHOPFLOOR_DEMO_TO_EMAIL=<safe recipient you control>
 ```
@@ -172,7 +151,7 @@ Verify:
 1. Open `http://127.0.0.1:8000`.
 2. Select Sara.
 3. Draft quote.
-4. Send quote.
+4. Create draft.
 5. Confirm audit row:
 
 ```text
@@ -180,7 +159,7 @@ Actor: Sara Patel
 Provider: gmail
 Decision: scalekit_execute_tool
 Outcome: succeeded
-Detail starts with REAL Gmail send via Scalekit
+Detail starts with REAL Gmail draft creation via Scalekit
 ```
 
 Then:
@@ -194,7 +173,7 @@ Actor: Theo Ruiz
 Provider: gmail
 Decision: scalekit_tool_scope
 Outcome: denied
-Detail says Theo has not delegated or does not have the Gmail customer-email tool
+Detail says Theo has not delegated or does not have the Gmail draft tool
 ```
 
 ## 9. Render Verification
