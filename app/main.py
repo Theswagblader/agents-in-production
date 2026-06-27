@@ -1,3 +1,7 @@
+import json
+import os
+from contextlib import asynccontextmanager
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,10 +17,21 @@ from app.actors import ACTORS
 from app.auth import get_actor_from_cookie
 from app.db import init_db
 from app.repositories import get_job, list_audit_events, list_jobs, record_audit, update_job
-from app.services.actian import draft_quote
+from app.services.actian import draft_quote, seed_collection
 from app.services.scalekit import ToolResult, send_customer_email_as_actor, write_crm_record_as_actor
 
-app = FastAPI(title="ShopFloor")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if os.environ.get("ACTIAN_MODE", "stub").lower() == "real":
+        try:
+            seed_collection()
+        except Exception as exc:
+            print(f"[actian] seed failed (continuing in stub fallback): {exc}")
+    yield
+
+
+app = FastAPI(title="ShopFloor", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
@@ -159,6 +174,7 @@ def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(defa
         job_id,
         quote_amount=draft.quote_amount,
         quote_text=draft.quote_text,
+        quote_comparables=json.dumps(draft.comparables_for_display()),
         quote_status="drafted",
         job_status="quoted",
         comparables_json=json.dumps(draft.comparables_for_display()),
@@ -174,7 +190,7 @@ def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(defa
         tool_name="vector_retrieval",
         decision_source="actian_retrieval",
         outcome="succeeded",
-        detail=f"{draft.detail} Comparables: {', '.join(j.job_id for j in draft.comparables)}",
+        detail=f"{draft.detail} Comparables: {', '.join(c.job_id for c in draft.comparables)}",
     )
     return RedirectResponse("/", status_code=303)
 

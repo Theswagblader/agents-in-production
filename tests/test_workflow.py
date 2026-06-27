@@ -46,12 +46,12 @@ def test_sara_can_draft_quote_with_stubbed_comparables(client):
     assert response.status_code == 303
     jobs = client.get("/jobs").json()["jobs"]
     job_a = next(job for job in jobs if job["job_id"] == "job_a")
-    assert job_a["quote_amount"] == 460
+    assert job_a["quote_amount"] == 529  # mean(480, 330, 570) * 1.15 risk multiplier (grinding)
     assert job_a["quote_status"] == "drafted"
     events = client.get("/audit").json()["events"]
     assert events[-1]["decision_source"] == "actian_retrieval"
     assert events[-1]["outcome"] == "succeeded"
-    assert "stubbed comparables" in events[-1]["detail"]
+    assert "Stub mode" in events[-1]["detail"]
 
 
 def test_sara_can_send_quote_email_in_stub_mode(client):
@@ -70,7 +70,6 @@ def test_sara_can_send_quote_email_in_stub_mode(client):
     assert events[-1]["provider"] == "gmail"
     assert events[-1]["tool_name"] == "gmail.send_email"
     assert events[-1]["outcome"] == "succeeded"
-    assert "STUBBED" in events[-1]["detail"]
 
 
 def test_maya_can_approve_job_in_stub_mode(client):

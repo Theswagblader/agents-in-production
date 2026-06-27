@@ -34,6 +34,7 @@ def init_db(reset: bool = False) -> None:
               symptom TEXT NOT NULL,
               quote_amount INTEGER,
               quote_text TEXT,
+              quote_comparables TEXT,
               quote_status TEXT NOT NULL,
               job_status TEXT NOT NULL,
               assigned_tech_id TEXT,
