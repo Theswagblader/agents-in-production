@@ -8,3 +8,4 @@ scalekit-sdk-python
 actian-vectorai-client
 sentence-transformers
 python-dotenv
+anthropic

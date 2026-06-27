@@ -121,18 +121,6 @@ def init_db(reset: bool = False) -> None:
                         "manager_maya",
                         "sales_sara",
                     ),
-                    (
-                        "job_b",
-                        "Morgan Lee",
-                        "morgan@example.com",
-                        "2017 Toyota Camry",
-                        "Squealing brakes at low speed",
-                        "needed",
-                        "queued",
-                        "tech_jordan",
-                        "manager_maya",
-                        "sales_sara",
-                    ),
                 ],
             )
 

@@ -22,6 +22,33 @@ def get_job(job_id: str) -> dict[str, Any] | None:
     return _row_to_dict(row) if row else None
 
 
+def create_job(
+    job_id: str,
+    customer_name: str,
+    customer_email: str,
+    vehicle: str,
+    symptom: str,
+    assigned_tech_id: str,
+    manager_id: str = "manager_maya",
+    sales_id: str = "sales_sara",
+    job_status: str = "pending",
+    quote_status: str = "needed",
+) -> None:
+    init_db()
+    with connect() as connection:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO jobs (
+              job_id, customer_name, customer_email, vehicle, symptom,
+              quote_status, job_status, assigned_tech_id, manager_id,
+              sales_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            """,
+            (job_id, customer_name, customer_email, vehicle, symptom,
+             quote_status, job_status, assigned_tech_id, manager_id, sales_id),
+        )
+
+
 def update_job(job_id: str, **fields: Any) -> None:
     if not fields:
         return

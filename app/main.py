@@ -17,13 +17,14 @@ from app.actors import ACTORS
 from app.auth import get_actor_from_cookie
 from app.db import init_db
 from app.repositories import (
-    get_job, get_inventory_item, get_part_order,
+    create_job, get_job, get_inventory_item, get_part_order,
     list_audit_events, list_jobs, list_inventory, list_part_orders,
     record_audit, update_job, update_inventory_item,
     create_part_order, update_part_order,
 )
 from app.services.actian import draft_quote, seed_collection, seed_inventory_collection
-from app.services.scalekit import ToolResult, send_customer_email_as_actor, send_supplier_email_as_actor, write_crm_record_as_actor
+from app.services.agent import get_crm_schema, run_agent_step
+from app.services.scalekit import ToolResult, create_notion_job, get_assigned_tech_from_crm, list_notion_jobs, send_customer_email_as_actor, send_supplier_email_as_actor, write_crm_record_as_actor
 
 
 @asynccontextmanager
@@ -50,14 +51,66 @@ def healthz() -> dict[str, bool]:
     return {"ok": True}
 
 
+
+
+
+
+
+@app.get("/debug/tool-schema")
+def debug_tool_schema(tool: str = "notion_data_source_insert_row", connection: str = "notion") -> dict:
+    import json as _json
+    from scalekit.v1.tools.tools_pb2 import ScopedToolFilter
+    from app.services.scalekit import ScalekitConfig, _get_scalekit_actions_client
+    config = ScalekitConfig.from_env()
+    actor = ACTORS["manager_maya"]
+    try:
+        actions = _get_scalekit_actions_client(config)
+        resp = actions.tools.list_scoped_tools(
+            identifier=actor.scalekit_identifier,
+            filter=ScopedToolFilter(connection_names=[connection]),
+        )
+        if isinstance(resp, tuple):
+            resp = resp[0]
+        for scoped in resp.tools:
+            t = scoped.tool
+            fields = t.definition.fields
+            name = fields.get("name")
+            if name and name.string_value == tool:
+                # serialize the whole definition to a readable form
+                from google.protobuf.json_format import MessageToDict
+                return {"tool": tool, "definition": MessageToDict(t.definition)}
+        return {"error": f"{tool} not found in scoped tools"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+
 def _build_template_context(request: Request, demo_actor_id: str | None) -> dict:
     actor = get_actor_from_cookie(demo_actor_id)
+
+    # SQLite jobs (Job A + any locally-created sim jobs)
+    sqlite_jobs = {job["job_id"]: dict(job) for job in list_jobs()}
+
+    # Notion jobs — only in real mode, only for authenticated actors
+    notion_jobs: list[dict] = []
+    if actor:
+        notion_jobs = list_notion_jobs(ACTORS["manager_maya"])
+
+    # Merge: Notion jobs that aren't already in SQLite get added to view
+    merged: dict[str, dict] = dict(sqlite_jobs)
+    for nj in notion_jobs:
+        jid = nj.get("job_id", "")
+        if jid and jid not in merged:
+            merged[jid] = nj
+
     jobs_for_view = []
-    for job in list_jobs():
+    for job in merged.values():
         view_job = dict(job)
-        view_job["label"] = "Job A" if job["job_id"] == "job_a" else "Job B"
+        view_job.setdefault("source", "sqlite")
         jobs_for_view.append(view_job)
-    job_a_data = next((j for j in jobs_for_view if j["job_id"] == "job_a"), {})
+    jobs_for_view.sort(key=lambda j: j.get("job_id", ""))
+
+    job_a_data = merged.get("job_a", {})
     job_a_comparables = []
     raw = job_a_data.get("comparables_json")
     if raw:
@@ -65,6 +118,7 @@ def _build_template_context(request: Request, demo_actor_id: str | None) -> dict
             job_a_comparables = json.loads(raw)
         except Exception:
             pass
+
     return {
         "actors": list(ACTORS.values()),
         "actor": actor,
@@ -149,6 +203,65 @@ def _record_tool_result(
     )
 
 
+@app.post("/jobs/simulate-request")
+def simulate_request(demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
+    actor = get_actor_from_cookie(demo_actor_id)
+    if actor is None or actor.actor_id != "sales_sara":
+        return RedirectResponse("/", status_code=303)
+
+    agent_result = run_agent_step({}, "simulate_request")
+    inputs = agent_result.tool_input
+
+    # resolve assigned tech name → actor_id
+    tech_name = inputs.get("assigned_technician", "Theo Ruiz")
+    tech_actor = next((a for a in ACTORS.values() if a.display_name == tech_name), None)
+    tech_id = tech_actor.actor_id if tech_actor else "tech_theo"
+
+    import re, time
+    job_id = "sim_" + re.sub(r"[^a-z0-9]", "", inputs.get("vehicle", "vehicle").lower())[:12] + "_" + str(int(time.time()))[-4:]
+
+    job_data = {
+        "job_id": job_id,
+        "customer_name": inputs.get("customer_name", ""),
+        "customer_email": inputs.get("customer_email", ""),
+        "vehicle": inputs.get("vehicle", ""),
+        "symptom": inputs.get("symptom", ""),
+        "assigned_tech_id": tech_id,
+        "assigned_tech_name": tech_name,
+        "job_status": "pending",
+        "priority": inputs.get("priority", "Normal"),
+    }
+
+    # Write to Notion via Maya (CRM owner — Sara has no Notion scope)
+    notion_result = create_notion_job(ACTORS["manager_maya"], job_data)
+
+    # Also mirror to SQLite so existing routes work
+    create_job(
+        job_id=job_id,
+        customer_name=job_data["customer_name"],
+        customer_email=job_data["customer_email"],
+        vehicle=job_data["vehicle"],
+        symptom=job_data["symptom"],
+        assigned_tech_id=tech_id,
+        job_status="pending",
+    )
+
+    record_audit(
+        actor_id=actor.actor_id,
+        actor_name=actor.display_name,
+        actor_role=actor.role,
+        action="simulate_request",
+        target_type="job",
+        target_id=job_id,
+        provider=notion_result.provider,
+        tool_name=notion_result.tool_name,
+        decision_source=notion_result.decision_source,
+        outcome=notion_result.outcome,
+        detail=f"AI generated: {inputs.get('vehicle')} / {inputs.get('symptom')} → assigned to {tech_name} ({inputs.get('priority')} priority). {agent_result.explanation}",
+    )
+    return RedirectResponse("/", status_code=303)
+
+
 @app.post("/jobs/{job_id}/receive-request")
 def receive_request(job_id: str, demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
     actor = get_actor_from_cookie(demo_actor_id)
@@ -179,14 +292,16 @@ def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(defa
         return RedirectResponse("/", status_code=303)
 
     draft = draft_quote(str(job["vehicle"]), str(job["symptom"]), str(job["symptom"]))
+    comparables = draft.comparables_for_display()
+    agent_result = run_agent_step(dict(job), "draft_quote", comparables=comparables)
+    quote_text = agent_result.tool_input.get("quote_text", draft.quote_text)
     update_job(
         job_id,
         quote_amount=draft.quote_amount,
-        quote_text=draft.quote_text,
-        quote_comparables=json.dumps(draft.comparables_for_display()),
+        quote_text=quote_text,
         quote_status="drafted",
         job_status="quoted",
-        comparables_json=json.dumps(draft.comparables_for_display()),
+        comparables_json=json.dumps(comparables),
     )
     record_audit(
         actor_id=actor.actor_id,
@@ -199,7 +314,7 @@ def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(defa
         tool_name="vector_retrieval",
         decision_source="actian_retrieval",
         outcome="succeeded",
-        detail=f"{draft.detail} Comparables: {', '.join(c.job_id for c in draft.comparables)}",
+        detail=f"{draft.detail} Comparables: {', '.join(c.job_id for c in draft.comparables)}. {agent_result.explanation}",
     )
     return RedirectResponse("/", status_code=303)
 
@@ -207,11 +322,12 @@ def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(defa
 @app.post("/quote/send")
 def quote_send(
     demo_actor_id: str | None = Cookie(default=None),
+    job_id: str = Form(default="job_a"),
     subject: str | None = Form(default=None),
     body: str | None = Form(default=None),
 ) -> RedirectResponse:
     actor = get_actor_from_cookie(demo_actor_id)
-    job = get_job("job_a")
+    job = get_job(job_id)
     if actor is None or job is None:
         return RedirectResponse("/", status_code=303)
 
@@ -222,7 +338,7 @@ def quote_send(
             actor_role=actor.role,
             action="send_quote",
             target_type="job",
-            target_id="job_a",
+            target_id=job_id,
             provider=None,
             tool_name=None,
             decision_source="backend_policy",
@@ -231,16 +347,22 @@ def quote_send(
         )
         return RedirectResponse("/", status_code=303)
 
-    result = send_customer_email_as_actor(actor, job, subject_override=subject or None, body_override=body or None)
+    agent_result = run_agent_step(dict(job), "send_quote_email")
+    result = send_customer_email_as_actor(
+        actor,
+        job,
+        subject_override=subject or agent_result.tool_input.get("subject"),
+        body_override=body or agent_result.tool_input.get("body"),
+    )
     if result.outcome in ("succeeded", "allowed"):
-        update_job("job_a", job_status="quote_sent")
+        update_job(job_id, job_status="quote_sent")
     _record_tool_result(
         actor_id=actor.actor_id,
         actor_name=actor.display_name,
         actor_role=actor.role,
         action="send_quote",
         target_type="job",
-        target_id="job_a",
+        target_id=job_id,
         result=result,
     )
     return RedirectResponse("/", status_code=303)
@@ -291,7 +413,13 @@ def send_completion(job_id: str, demo_actor_id: str | None = Cookie(default=None
         )
         return RedirectResponse("/", status_code=303)
 
-    result = send_customer_email_as_actor(actor, job)
+    agent_result = run_agent_step(dict(job), "send_completion_email")
+    result = send_customer_email_as_actor(
+        actor,
+        job,
+        subject_override=agent_result.tool_input.get("subject"),
+        body_override=agent_result.tool_input.get("body"),
+    )
     if result.outcome in ("succeeded", "allowed"):
         update_job(job_id, job_status="closed")
     _record_tool_result(
@@ -331,7 +459,9 @@ def approve_job(job_id: str, demo_actor_id: str | None = Cookie(default=None)) -
 
     update_job(job_id, job_status="approved")
     updated_job = get_job(job_id) or job
-    result = write_crm_record_as_actor(actor, updated_job, "approved")
+    crm_schema = get_crm_schema(actor)
+    agent_result = run_agent_step(dict(updated_job), "write_crm_approval", crm_schema=crm_schema)
+    result = write_crm_record_as_actor(actor, updated_job, "approved", record=agent_result.tool_input)
     _record_tool_result(
         actor_id=actor.actor_id,
         actor_name=actor.display_name,
@@ -371,7 +501,26 @@ def complete_job(
         )
         return RedirectResponse("/", status_code=303)
 
-    if job["assigned_tech_id"] != actor.actor_id:
+    crm_assigned = get_assigned_tech_from_crm(actor, job_id)
+    if crm_assigned is not None:
+        # CRM is authoritative — check name from Notion record written by Maya
+        if crm_assigned != actor.display_name:
+            record_audit(
+                actor_id=actor.actor_id,
+                actor_name=actor.display_name,
+                actor_role=actor.role,
+                action="complete_job",
+                target_type="job",
+                target_id=job_id,
+                provider="notion",
+                tool_name="notion_data_source_query",
+                decision_source="notion_crm_trusted_state",
+                outcome="denied",
+                detail=f"Denied: CRM assigns this job to '{crm_assigned}', not '{actor.display_name}'.",
+            )
+            return RedirectResponse("/", status_code=303)
+    elif job["assigned_tech_id"] != actor.actor_id:
+        # fallback to local DB if CRM unavailable
         record_audit(
             actor_id=actor.actor_id,
             actor_name=actor.display_name,
@@ -387,9 +536,11 @@ def complete_job(
         )
         return RedirectResponse("/", status_code=303)
 
-    update_job(job_id, job_status="completed", completion_summary=summary)
+    agent_result = run_agent_step(dict(job), "complete_job")
+    completion_summary = agent_result.tool_input.get("summary", summary)
+    update_job(job_id, job_status="completed", completion_summary=completion_summary)
     updated_job = get_job(job_id) or job
-    result = write_crm_record_as_actor(actor, updated_job, "completed")
+    result = write_crm_record_as_actor(actor, updated_job, "completed", record=agent_result.tool_input)
     _record_tool_result(
         actor_id=actor.actor_id,
         actor_name=actor.display_name,
@@ -441,8 +592,7 @@ def attack_tech_email_customer(demo_actor_id: str | None = Cookie(default=None))
 @app.post("/attack/complete-wrong-job")
 def attack_complete_wrong_job(demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
     actor = get_actor_from_cookie(demo_actor_id)
-    job = get_job("job_a")
-    if actor is None or job is None:
+    if actor is None:
         return RedirectResponse("/", status_code=303)
 
     if actor.actor_id != "tech_jordan":
@@ -452,7 +602,7 @@ def attack_complete_wrong_job(demo_actor_id: str | None = Cookie(default=None)) 
             actor_role=actor.role,
             action="attack_complete_wrong_job",
             target_type="job",
-            target_id="job_a",
+            target_id=None,
             provider=None,
             tool_name=None,
             decision_source="backend_policy",
@@ -461,23 +611,16 @@ def attack_complete_wrong_job(demo_actor_id: str | None = Cookie(default=None)) 
         )
         return RedirectResponse("/", status_code=303)
 
-    if job["assigned_tech_id"] != actor.actor_id:
-        record_audit(
-            actor_id=actor.actor_id,
-            actor_name=actor.display_name,
-            actor_role=actor.role,
-            action="attack_complete_wrong_job",
-            target_type="job",
-            target_id="job_a",
-            provider=None,
-            tool_name=None,
-            decision_source="backend_trusted_job_state",
-            outcome="denied",
-            detail="Denied before external tool call: Job A is assigned to Theo Ruiz.",
-        )
+    # Find any job assigned to Theo that Jordan has no right to complete
+    theo_job = next(
+        (j for j in list_jobs() if j["assigned_tech_id"] == "tech_theo"),
+        None,
+    )
+    if theo_job is None:
         return RedirectResponse("/", status_code=303)
 
-    return complete_job("job_a", "Completed through attack route.", demo_actor_id)
+    target_job_id = theo_job["job_id"]
+    return complete_job(target_job_id, "Completed through attack route.", demo_actor_id)
 
 
 # ── Inventory management ──────────────────────────────────────────────────────

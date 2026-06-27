@@ -621,6 +621,27 @@ button { font: inherit; cursor: pointer; }
 
 .btn-primary:hover { opacity: .88; }
 
+.btn-secondary {
+  background: var(--surface);
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+}
+.btn-secondary:hover { background: var(--accent-light); }
+
+.source-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 .btn-attack {
   background: var(--danger-bg);
   color: var(--danger);
