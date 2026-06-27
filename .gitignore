@@ -28,6 +28,7 @@ venv/
 dist/
 build/
 coverage/
+.data/
 .cache/
 .pytest_cache/
 __pycache__/

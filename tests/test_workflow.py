@@ -135,6 +135,36 @@ def test_jordan_wrong_job_attack_records_backend_denial_without_tool_call(client
     assert events[-1]["outcome"] == "denied"
 
 
+def test_tech_email_attack_requires_theo(client):
+    client.cookies.set("demo_actor_id", "sales_sara")
+
+    response = client.post("/attack/tech-email-customer", follow_redirects=False)
+
+    assert response.status_code == 303
+    events = client.get("/audit").json()["events"]
+    assert events[-1]["actor_id"] == "sales_sara"
+    assert events[-1]["provider"] is None
+    assert events[-1]["tool_name"] is None
+    assert events[-1]["decision_source"] == "backend_policy"
+    assert events[-1]["outcome"] == "denied"
+
+
+def test_wrong_job_attack_requires_jordan_and_does_not_complete_as_theo(client):
+    client.cookies.set("demo_actor_id", "tech_theo")
+
+    response = client.post("/attack/complete-wrong-job", follow_redirects=False)
+
+    assert response.status_code == 303
+    job_a = next(job for job in client.get("/jobs").json()["jobs"] if job["job_id"] == "job_a")
+    assert job_a["job_status"] == "quoted"
+    events = client.get("/audit").json()["events"]
+    assert events[-1]["actor_id"] == "tech_theo"
+    assert events[-1]["provider"] is None
+    assert events[-1]["tool_name"] is None
+    assert events[-1]["decision_source"] == "backend_policy"
+    assert events[-1]["outcome"] == "denied"
+
+
 def test_dashboard_renders_identity_workflow_and_audit(client):
     response = client.get("/")
 

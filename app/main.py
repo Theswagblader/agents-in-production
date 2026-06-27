@@ -266,6 +266,22 @@ def attack_tech_email_customer(demo_actor_id: str | None = Cookie(default=None))
     if actor is None or job is None:
         return RedirectResponse("/", status_code=303)
 
+    if actor.actor_id != "tech_theo":
+        record_audit(
+            actor_id=actor.actor_id,
+            actor_name=actor.display_name,
+            actor_role=actor.role,
+            action="attack_tech_email_customer",
+            target_type="job",
+            target_id="job_a",
+            provider=None,
+            tool_name=None,
+            decision_source="backend_policy",
+            outcome="denied",
+            detail="Demo attack route requires Theo Ruiz as the current actor.",
+        )
+        return RedirectResponse("/", status_code=303)
+
     result = send_customer_email_as_actor(actor, job)
     _record_tool_result(
         actor_id=actor.actor_id,
@@ -284,6 +300,22 @@ def attack_complete_wrong_job(demo_actor_id: str | None = Cookie(default=None)) 
     actor = get_actor_from_cookie(demo_actor_id)
     job = get_job("job_a")
     if actor is None or job is None:
+        return RedirectResponse("/", status_code=303)
+
+    if actor.actor_id != "tech_jordan":
+        record_audit(
+            actor_id=actor.actor_id,
+            actor_name=actor.display_name,
+            actor_role=actor.role,
+            action="attack_complete_wrong_job",
+            target_type="job",
+            target_id="job_a",
+            provider=None,
+            tool_name=None,
+            decision_source="backend_policy",
+            outcome="denied",
+            detail="Demo attack route requires Jordan Lee as the current actor.",
+        )
         return RedirectResponse("/", status_code=303)
 
     if job["assigned_tech_id"] != actor.actor_id:
