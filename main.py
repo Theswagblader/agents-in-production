@@ -1,6 +1,3 @@
-from fastapi import FastAPI
-app = FastAPI()
+from app.main import app
 
-@app.get("/")
-def root():
-    return {"status": "alive"}
+__all__ = ["app"]
