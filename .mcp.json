@@ -3,6 +3,13 @@
     "scalekit": {
       "type": "http",
       "url": "https://mcp.scalekit.com/"
+    },
+    "render": {
+      "type": "http",
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer rnd_vh5J3xbfEZRreg6QrzEqbT6ZWkd3"
+      }
     }
   }
 }
