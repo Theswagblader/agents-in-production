@@ -36,3 +36,19 @@ def test_audit_starts_empty(client):
 
     assert response.status_code == 200
     assert response.json() == {"events": []}
+
+
+def test_sara_can_draft_quote_with_stubbed_comparables(client):
+    client.cookies.set("demo_actor_id", "sales_sara")
+
+    response = client.post("/quote/draft", data={"job_id": "job_a"}, follow_redirects=False)
+
+    assert response.status_code == 303
+    jobs = client.get("/jobs").json()["jobs"]
+    job_a = next(job for job in jobs if job["job_id"] == "job_a")
+    assert job_a["quote_amount"] == 460
+    assert job_a["quote_status"] == "drafted"
+    events = client.get("/audit").json()["events"]
+    assert events[-1]["decision_source"] == "actian_retrieval"
+    assert events[-1]["outcome"] == "succeeded"
+    assert "stubbed comparables" in events[-1]["detail"]
