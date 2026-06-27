@@ -33,7 +33,10 @@
             <td class="inv-muted">{{ item.last_ordered or '—' }}</td>
             <td class="inv-muted inv-supplier">{{ item.supplier_name }}</td>
             <td class="inv-mono inv-muted">{{ item.location or '—' }}</td>
-            <td><button type="button" class="btn-update-stock" onclick="openStockModal({{ item.item_id|tojson }}, {{ item.name|tojson }}, {{ item.quantity|tojson }})">Update</button></td>
+            <td><button type="button" class="btn-update-stock js-update-stock"
+              data-item-id="{{ item.item_id }}"
+              data-item-name="{{ item.name }}"
+              data-qty="{{ item.quantity }}">Update</button></td>
           </tr>
         {% endfor %}
       </tbody>
@@ -59,7 +62,13 @@
                 </form>
               {% endif %}
               {% if order.status == "approved" and actor.actor_id == "manager_maya" %}
-                <button type="button" class="btn btn-primary btn-sm" onclick="openSupplierEmailModal({{ order.order_id|tojson }}, {{ order.item_name|tojson }}, {{ order.part_number|tojson }}, {{ order.quantity_ordered|tojson }}, {{ order.supplier_name|tojson }}, {{ order.supplier_email|tojson }})">Send Email</button>
+                <button type="button" class="btn btn-primary btn-sm js-send-email"
+                  data-order-id="{{ order.order_id }}"
+                  data-item-name="{{ order.item_name }}"
+                  data-part-number="{{ order.part_number }}"
+                  data-qty="{{ order.quantity_ordered }}"
+                  data-supplier-name="{{ order.supplier_name }}"
+                  data-supplier-email="{{ order.supplier_email }}">Send Email</button>
               {% endif %}
             </div>
           </div>
@@ -379,6 +388,9 @@
           </div>
         </div>
 
+        {{ inventory_panel('inventory-panel') }}
+
+        <div id="jobs-panel">
         {% set maya_jobs = jobs | selectattr("job_status", "in", ["submitted", "approved", "completed", "closed"]) | list %}
         {% for job in maya_jobs %}
           <div class="job-card">
@@ -416,6 +428,7 @@
             <div class="empty-queue-sub">Jobs appear here once Sales submits a quote</div>
           </div>
         {% endfor %}
+        </div>{# /jobs-panel #}
 
       {% elif actor.actor_id in ("tech_theo", "tech_jordan") %}
         {# ── Technician workflow ── #}
@@ -672,6 +685,100 @@
 
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') { closeEmailModal(); closeSupplierEmailModal(); closeOrderModal(); closeStockModal(); }
+  });
+
+  // ── Inventory modal functions ──────────────────────────────────────────────
+  function openOrderModal() {
+    document.getElementById('order-modal').classList.add('modal-open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeOrderModal() {
+    document.getElementById('order-modal').classList.remove('modal-open');
+    document.body.style.overflow = '';
+    var f = document.getElementById('order-form');
+    if (f) f.reset();
+  }
+  function updateOrderDefaults(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    var name = opt.getAttribute('data-name');
+    var pn   = opt.getAttribute('data-pn');
+    var sup  = opt.getAttribute('data-supplier');
+    var qty  = document.getElementById('order-qty').value || '1';
+    var subjectEl = document.getElementById('order-subject');
+    var bodyEl    = document.getElementById('order-body');
+    if (subjectEl) subjectEl.value = 'Part Order Request: ' + name + ' (' + pn + ')';
+    if (bodyEl) bodyEl.value =
+      'Dear ' + sup + ',\n\nWe would like to place an order for the following part:\n\n' +
+      '  Part: ' + name + '\n  Part Number: ' + pn + '\n  Quantity: ' + qty + '\n\n' +
+      'Please confirm availability and expected delivery timeline.\n\nThank you,\nMaya Chen\nClearance Manager';
+  }
+  var _stockCurrent = 0;
+  function openStockModal(itemId, itemName, currentQty) {
+    _stockCurrent = currentQty;
+    document.getElementById('stock-modal-title').textContent = 'Update Stock — ' + itemName;
+    document.getElementById('stock-current').value = currentQty;
+    document.getElementById('stock-value').value = currentQty;
+    document.getElementById('stock-form').action = '/inventory/item/' + itemId + '/update-stock';
+    document.querySelectorAll('input[name="mode"]')[0].checked = true;
+    updateStockPreview();
+    document.getElementById('stock-modal').classList.add('modal-open');
+    document.body.style.overflow = 'hidden';
+    document.getElementById('stock-value').focus();
+  }
+  function closeStockModal() {
+    document.getElementById('stock-modal').classList.remove('modal-open');
+    document.body.style.overflow = '';
+  }
+  function closeSupplierEmailModal() {
+    var m = document.getElementById('supplier-email-modal');
+    if (m) m.classList.remove('modal-open');
+    document.body.style.overflow = '';
+  }
+  function updateStockPreview() {
+    var mode = document.querySelector('input[name="mode"]:checked');
+    if (!mode) return;
+    var val  = parseInt(document.getElementById('stock-value').value) || 0;
+    var result;
+    if (mode.value === 'set')      result = val;
+    else if (mode.value === 'add') result = _stockCurrent + val;
+    else                           result = Math.max(0, _stockCurrent - val);
+    var el = document.getElementById('stock-preview');
+    if (el) {
+      el.textContent = '→ New quantity: ' + result;
+      el.className = 'stock-preview' + (result <= 0 ? ' stock-preview-warn' : '');
+    }
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    var qtyEl = document.getElementById('order-qty');
+    if (qtyEl) qtyEl.addEventListener('input', function() {
+      var sel = document.getElementById('order-item');
+      if (sel && sel.value) updateOrderDefaults(sel);
+    });
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('.js-update-stock');
+      if (btn) openStockModal(btn.dataset.itemId, btn.dataset.itemName, parseInt(btn.dataset.qty));
+      var emailBtn = e.target.closest('.js-send-email');
+      if (emailBtn) {
+        var supModal = document.getElementById('supplier-email-modal');
+        if (supModal) {
+          var form = document.getElementById('supplier-email-form');
+          if (form) form.action = '/inventory/order/' + emailBtn.dataset.orderId + '/send-email';
+          var toEl = document.getElementById('supplier-email-to');
+          if (toEl) toEl.value = emailBtn.dataset.supplierEmail;
+          var subEl = document.getElementById('supplier-subject');
+          if (subEl) subEl.value = 'Part Order Request: ' + emailBtn.dataset.itemName + ' (' + emailBtn.dataset.partNumber + ')';
+          var bodyEl = document.getElementById('supplier-body');
+          if (bodyEl) bodyEl.value =
+            'Dear ' + emailBtn.dataset.supplierName + ',\n\nWe would like to place an order for the following part:\n\n' +
+            '  Part: ' + emailBtn.dataset.itemName + '\n  Part Number: ' + emailBtn.dataset.partNumber +
+            '\n  Quantity: ' + emailBtn.dataset.qty + '\n\n' +
+            'Please confirm availability and expected delivery timeline.\n\nThank you,\nMaya Chen\nClearance Manager';
+          supModal.classList.add('modal-open');
+          document.body.style.overflow = 'hidden';
+        }
+      }
+    });
   });
 
   function showManagerTab(name) {
