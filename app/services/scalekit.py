@@ -81,7 +81,12 @@ def _get_scalekit_actions_client(config: ScalekitConfig) -> ScalekitActionsClien
 
 def _tool_names(tools_response: Any) -> set[str]:
     names = set()
-    for tool in getattr(tools_response, "tools", []):
+    # gRPC responses return (response, metadata) tuple
+    if isinstance(tools_response, tuple):
+        tools_response = tools_response[0]
+
+    tools_list = getattr(tools_response, "tools", [])
+    for tool in tools_list:
         if hasattr(tool, "tool") and hasattr(tool.tool, "definition"):
             fields = tool.tool.definition.fields
             if "name" in fields:
