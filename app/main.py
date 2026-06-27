@@ -2,6 +2,7 @@ from fastapi import Cookie, FastAPI, Form
 from fastapi.responses import RedirectResponse
 
 from app.auth import get_actor_from_cookie
+from app.repositories import list_audit_events, list_jobs
 
 app = FastAPI(title="ShopFloor")
 
@@ -30,3 +31,13 @@ def logout() -> RedirectResponse:
 def me(demo_actor_id: str | None = Cookie(default=None)) -> dict[str, object | None]:
     actor = get_actor_from_cookie(demo_actor_id)
     return {"actor": actor.to_dict() if actor else None}
+
+
+@app.get("/jobs")
+def jobs() -> dict[str, object]:
+    return {"jobs": list_jobs()}
+
+
+@app.get("/audit")
+def audit() -> dict[str, object]:
+    return {"events": list_audit_events()}
