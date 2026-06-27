@@ -1,3 +1,5 @@
+import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,7 +17,53 @@ class ToolResult:
     external_request_id: str | None = None
 
 
+@dataclass(frozen=True)
+class ScalekitConfig:
+    mode: str
+    env_url: str | None
+    client_id: str | None
+    client_secret: str | None
+    gmail_connection_name: str
+    gmail_send_tool_name: str | None
+    demo_to_email: str | None
+
+    @classmethod
+    def from_env(cls) -> "ScalekitConfig":
+        return cls(
+            mode=os.environ.get("SCALEKIT_MODE", "stub").lower(),
+            env_url=os.environ.get("SCALEKIT_ENV_URL"),
+            client_id=os.environ.get("SCALEKIT_CLIENT_ID"),
+            client_secret=os.environ.get("SCALEKIT_CLIENT_SECRET"),
+            gmail_connection_name=os.environ.get("SCALEKIT_GMAIL_CONNECTION_NAME", "gmail"),
+            gmail_send_tool_name=os.environ.get("SCALEKIT_GMAIL_SEND_TOOL_NAME"),
+            demo_to_email=os.environ.get("SHOPFLOOR_DEMO_TO_EMAIL"),
+        )
+
+    def missing_real_mode_vars(self) -> list[str]:
+        required = {
+            "SCALEKIT_ENV_URL": self.env_url,
+            "SCALEKIT_CLIENT_ID": self.client_id,
+            "SCALEKIT_CLIENT_SECRET": self.client_secret,
+            "SCALEKIT_GMAIL_SEND_TOOL_NAME": self.gmail_send_tool_name,
+            "SHOPFLOOR_DEMO_TO_EMAIL": self.demo_to_email,
+        }
+        return [name for name, value in required.items() if not value]
+
+
 def send_customer_email_as_actor(actor: Actor, job: dict[str, Any]) -> ToolResult:
+    config = ScalekitConfig.from_env()
+    if config.mode == "real":
+        missing = config.missing_real_mode_vars()
+        if missing:
+            return ToolResult(
+                ok=False,
+                outcome="failed",
+                provider="gmail",
+                tool_name=None,
+                decision_source="scalekit_config",
+                detail=f"Missing required Scalekit env vars for real mode: {', '.join(missing)}.",
+            )
+
     if actor.actor_id != "sales_sara":
         return ToolResult(
             ok=False,
