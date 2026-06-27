@@ -103,3 +103,33 @@ def test_theo_can_complete_assigned_job_in_stub_mode(client):
     events = client.get("/audit").json()["events"]
     assert events[-1]["actor_id"] == "tech_theo"
     assert events[-1]["outcome"] == "succeeded"
+
+
+def test_theo_customer_email_attack_records_scalekit_scope_denial(client):
+    client.cookies.set("demo_actor_id", "tech_theo")
+
+    response = client.post("/attack/tech-email-customer", follow_redirects=False)
+
+    assert response.status_code == 303
+    events = client.get("/audit").json()["events"]
+    assert events[-1]["actor_id"] == "tech_theo"
+    assert events[-1]["provider"] == "gmail"
+    assert events[-1]["tool_name"] == "gmail.send_email"
+    assert events[-1]["decision_source"] == "scalekit_tool_scope"
+    assert events[-1]["outcome"] == "denied"
+
+
+def test_jordan_wrong_job_attack_records_backend_denial_without_tool_call(client):
+    client.cookies.set("demo_actor_id", "tech_jordan")
+
+    response = client.post("/attack/complete-wrong-job", follow_redirects=False)
+
+    assert response.status_code == 303
+    job_a = next(job for job in client.get("/jobs").json()["jobs"] if job["job_id"] == "job_a")
+    assert job_a["job_status"] == "quoted"
+    events = client.get("/audit").json()["events"]
+    assert events[-1]["actor_id"] == "tech_jordan"
+    assert events[-1]["provider"] is None
+    assert events[-1]["tool_name"] is None
+    assert events[-1]["decision_source"] == "backend_trusted_job_state"
+    assert events[-1]["outcome"] == "denied"

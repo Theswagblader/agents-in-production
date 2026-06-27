@@ -231,3 +231,49 @@ def complete_job(
         result=result,
     )
     return RedirectResponse("/", status_code=303)
+
+
+@app.post("/attack/tech-email-customer")
+def attack_tech_email_customer(demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
+    actor = get_actor_from_cookie(demo_actor_id)
+    job = get_job("job_a")
+    if actor is None or job is None:
+        return RedirectResponse("/", status_code=303)
+
+    result = send_customer_email_as_actor(actor, job)
+    _record_tool_result(
+        actor_id=actor.actor_id,
+        actor_name=actor.display_name,
+        actor_role=actor.role,
+        action="attack_tech_email_customer",
+        target_type="job",
+        target_id="job_a",
+        result=result,
+    )
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/attack/complete-wrong-job")
+def attack_complete_wrong_job(demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
+    actor = get_actor_from_cookie(demo_actor_id)
+    job = get_job("job_a")
+    if actor is None or job is None:
+        return RedirectResponse("/", status_code=303)
+
+    if job["assigned_tech_id"] != actor.actor_id:
+        record_audit(
+            actor_id=actor.actor_id,
+            actor_name=actor.display_name,
+            actor_role=actor.role,
+            action="attack_complete_wrong_job",
+            target_type="job",
+            target_id="job_a",
+            provider=None,
+            tool_name=None,
+            decision_source="backend_trusted_job_state",
+            outcome="denied",
+            detail="Denied before external tool call: Job A is assigned to Theo Ruiz.",
+        )
+        return RedirectResponse("/", status_code=303)
+
+    return complete_job("job_a", "Completed through attack route.", demo_actor_id)
