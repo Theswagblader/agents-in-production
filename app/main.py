@@ -1,17 +1,43 @@
-from fastapi import Cookie, FastAPI, Form
+from fastapi import Cookie, FastAPI, Form, Request
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
+from app.actors import ACTORS
 from app.auth import get_actor_from_cookie
 from app.repositories import get_job, list_audit_events, list_jobs, record_audit, update_job
 from app.services.actian import draft_quote
 from app.services.scalekit import ToolResult, send_customer_email_as_actor, write_crm_record_as_actor
 
 app = FastAPI(title="ShopFloor")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+templates = Jinja2Templates(directory="app/templates")
 
 
 @app.get("/healthz")
 def healthz() -> dict[str, bool]:
     return {"ok": True}
+
+
+@app.get("/")
+def dashboard(request: Request, demo_actor_id: str | None = Cookie(default=None)):
+    actor = get_actor_from_cookie(demo_actor_id)
+    jobs_for_view = []
+    for job in list_jobs():
+        view_job = dict(job)
+        view_job["label"] = "Job A" if job["job_id"] == "job_a" else "Job B"
+        jobs_for_view.append(view_job)
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "actors": list(ACTORS.values()),
+            "actor": actor,
+            "jobs": jobs_for_view,
+            "job_a": next(job for job in jobs_for_view if job["job_id"] == "job_a"),
+            "audit_events": list_audit_events(),
+        },
+    )
 
 
 @app.post("/demo/login")

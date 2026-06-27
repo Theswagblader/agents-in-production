@@ -133,3 +133,14 @@ def test_jordan_wrong_job_attack_records_backend_denial_without_tool_call(client
     assert events[-1]["tool_name"] is None
     assert events[-1]["decision_source"] == "backend_trusted_job_state"
     assert events[-1]["outcome"] == "denied"
+
+
+def test_dashboard_renders_identity_workflow_and_audit(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Sara Patel" in response.text
+    assert "Job A" in response.text
+    assert "Audit" in response.text
+    assert "Theo tries customer email" in response.text
+    assert "Jordan tries Theo's job" in response.text

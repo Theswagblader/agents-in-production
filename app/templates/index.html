@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ShopFloor</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>ShopFloor</h1>
+        <p>The model never gets a vote on whose token it uses.</p>
+      </div>
+      {% if actor %}
+        <div class="actor-pill">
+          <strong>{{ actor.display_name }}</strong>
+          <span>{{ actor.role|title }}</span>
+          <small>{{ actor.allowed_connections|join(", ") }}</small>
+          <form method="post" action="/demo/logout">
+            <button type="submit">Switch</button>
+          </form>
+        </div>
+      {% else %}
+        <div class="actor-pill muted">No actor selected</div>
+      {% endif %}
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>Actors</h2>
+        <div class="actor-grid">
+          {% for demo_actor in actors %}
+            <form class="actor-tile" method="post" action="/demo/login">
+              <input type="hidden" name="actor_id" value="{{ demo_actor.actor_id }}">
+              <strong>{{ demo_actor.display_name }}</strong>
+              <span>{{ demo_actor.role|title }}</span>
+              <small>
+                {% if demo_actor.actor_id == "sales_sara" %}
+                  Can send quote email
+                {% elif demo_actor.actor_id == "manager_maya" %}
+                  Can approve and write CRM
+                {% elif demo_actor.actor_id == "tech_theo" %}
+                  Assigned to Job A
+                {% else %}
+                  Not assigned to Job A
+                {% endif %}
+              </small>
+              <button type="submit">Use Actor</button>
+            </form>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="panel workflow">
+        <div class="section-head">
+          <h2>Job A</h2>
+          <span class="status">{{ job_a.job_status }}</span>
+        </div>
+        <dl class="job-facts">
+          <div>
+            <dt>Customer</dt>
+            <dd>{{ job_a.customer_name }}</dd>
+          </div>
+          <div>
+            <dt>Vehicle</dt>
+            <dd>{{ job_a.vehicle }}</dd>
+          </div>
+          <div>
+            <dt>Concern</dt>
+            <dd>{{ job_a.symptom }}</dd>
+          </div>
+          <div>
+            <dt>Assigned Tech</dt>
+            <dd>Theo Ruiz</dd>
+          </div>
+          <div>
+            <dt>Quote</dt>
+            <dd>
+              {% if job_a.quote_amount %}
+                ${{ job_a.quote_amount }} · {{ job_a.quote_status }}
+              {% else %}
+                Not drafted
+              {% endif %}
+            </dd>
+          </div>
+        </dl>
+
+        {% if job_a.quote_text %}
+          <p class="quote-text">{{ job_a.quote_text }}</p>
+        {% endif %}
+
+        <div class="actions">
+          <form method="post" action="/quote/draft">
+            <input type="hidden" name="job_id" value="job_a">
+            <button type="submit">Draft quote from Actian</button>
+          </form>
+          <form method="post" action="/quote/send">
+            <button type="submit">Send quote as Sara</button>
+          </form>
+          <form method="post" action="/jobs/job_a/approve">
+            <button type="submit">Approve job as Maya</button>
+          </form>
+          <form method="post" action="/jobs/job_a/complete">
+            <input name="summary" value="Replaced front brake pads and resurfaced rotors.">
+            <button type="submit">Complete Job A as Theo</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Attack Tests</h2>
+        <div class="actions">
+          <form method="post" action="/attack/tech-email-customer">
+            <button type="submit">Theo tries customer email</button>
+          </form>
+          <form method="post" action="/attack/complete-wrong-job">
+            <button type="submit">Jordan tries Theo's job</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel audit-panel">
+        <h2>Audit</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Provider</th>
+                <th>Decision</th>
+                <th>Outcome</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for event in audit_events %}
+                <tr>
+                  <td>{{ event.actor_name }}<br><small>{{ event.actor_role }}</small></td>
+                  <td>{{ event.action }}</td>
+                  <td>{{ event.target_id or "" }}</td>
+                  <td>{{ event.provider or "none" }}<br><small>{{ event.tool_name or "" }}</small></td>
+                  <td>{{ event.decision_source }}</td>
+                  <td><span class="outcome {{ event.outcome }}">{{ event.outcome }}</span></td>
+                  <td>{{ event.detail or "" }}</td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="7" class="empty">No audit events yet.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
