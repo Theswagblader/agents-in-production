@@ -86,3 +86,56 @@ def test_real_mode_denies_theo_when_gmail_tool_not_in_scoped_tools(monkeypatch, 
     assert result.tool_name == "gmail_create_draft"
     assert result.decision_source == "scalekit_tool_scope"
     assert "does not have the Gmail customer-email tool" in result.detail
+
+
+def test_real_mode_executes_sara_gmail_create_draft(monkeypatch, quoted_job):
+    configure_real_mode(monkeypatch)
+    fake_actions = FakeActions(tool_names=["gmail_create_draft"])
+    scalekit_service.set_scalekit_client_factory(lambda: fake_actions)
+
+    try:
+        result = send_customer_email_as_actor(ACTORS["sales_sara"], quoted_job)
+    finally:
+        scalekit_service.set_scalekit_client_factory(None)
+
+    assert fake_actions.tools.calls == [{"identifier": "sales_sara"}]
+    assert len(fake_actions.execute_calls) == 1
+    call = fake_actions.execute_calls[0]
+    assert call["tool_name"] == "gmail_create_draft"
+    assert call["identifier"] == "sales_sara"
+    assert "to" in call["tool_input"]
+    assert "subject" in call["tool_input"]
+    assert "body" in call["tool_input"]
+    assert result.ok is True
+    assert result.outcome == "succeeded"
+    assert result.provider == "gmail"
+    assert result.tool_name == "gmail_create_draft"
+    assert result.decision_source == "scalekit_execute_tool"
+    assert result.external_request_id == "exec_fake_123"
+    assert "REAL Gmail draft via Scalekit as Sara" in result.detail
+
+
+class FailingExecuteActions(FakeActions):
+    def execute_tool(self, **kwargs):
+        self.execute_calls.append(kwargs)
+        raise RuntimeError("upstream gmail rejected request")
+
+
+def test_real_mode_maps_execution_failure_to_failed_result(monkeypatch, quoted_job):
+    configure_real_mode(monkeypatch)
+    fake_actions = FailingExecuteActions(tool_names=["gmail_create_draft"])
+    scalekit_service.set_scalekit_client_factory(lambda: fake_actions)
+
+    try:
+        result = send_customer_email_as_actor(ACTORS["sales_sara"], quoted_job)
+    finally:
+        scalekit_service.set_scalekit_client_factory(None)
+
+    assert fake_actions.execute_calls
+    assert result.ok is False
+    assert result.outcome == "failed"
+    assert result.provider == "gmail"
+    assert result.tool_name == "gmail_create_draft"
+    assert result.decision_source == "scalekit_execute_tool"
+    assert "RuntimeError" in result.detail
+    assert "upstream gmail rejected request" in result.detail

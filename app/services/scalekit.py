@@ -83,6 +83,15 @@ def _tool_names(tools_response: Any) -> set[str]:
     return {str(tool.name) for tool in getattr(tools_response, "tools", [])}
 
 
+def _gmail_draft_input(config: ScalekitConfig, job: dict[str, Any]) -> dict[str, str]:
+    body = str(job.get("quote_text") or f"Repair quote for {job['vehicle']}: diagnosis pending.")
+    return {
+        "to": str(config.demo_to_email),
+        "subject": f"Repair quote for {job['vehicle']}",
+        "body": body,
+    }
+
+
 def send_customer_email_as_actor(actor: Actor, job: dict[str, Any]) -> ToolResult:
     config = ScalekitConfig.from_env()
     if config.mode == "real":
@@ -135,6 +144,35 @@ def send_customer_email_as_actor(actor: Actor, job: dict[str, Any]) -> ToolResul
                     "customer-email tool in scoped tools."
                 ),
             )
+
+        try:
+            execution = actions.execute_tool(
+                tool_input=_gmail_draft_input(config, job),
+                tool_name=str(config.gmail_send_tool_name),
+                identifier=actor.scalekit_identifier,
+            )
+        except Exception as exc:
+            return ToolResult(
+                ok=False,
+                outcome="failed",
+                provider="gmail",
+                tool_name=config.gmail_send_tool_name,
+                decision_source="scalekit_execute_tool",
+                detail=f"REAL Scalekit Gmail execution failed ({exc.__class__.__name__}: {exc}).",
+            )
+
+        return ToolResult(
+            ok=True,
+            outcome="succeeded",
+            provider="gmail",
+            tool_name=config.gmail_send_tool_name,
+            decision_source="scalekit_execute_tool",
+            detail=(
+                f"REAL Gmail draft via Scalekit as Sara {actor.display_name} "
+                f"to {config.demo_to_email}."
+            ),
+            external_request_id=getattr(execution, "execution_id", None),
+        )
 
     if actor.actor_id != "sales_sara":
         return ToolResult(
