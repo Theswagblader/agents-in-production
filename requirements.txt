@@ -6,7 +6,7 @@ pytest==8.3.4
 httpx==0.28.1
 scalekit-sdk-python
 actian-vectorai-client
-protobuf>=6.31.1
+protobuf>=6.31.1,<7.0.0
 sentence-transformers
 python-dotenv
 anthropic
