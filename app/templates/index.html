@@ -13,7 +13,7 @@
     <span class="brand-mark">SF</span>
     <div>
       <div class="brand-name">ShopFloor</div>
-      <div class="brand-sub">Delegated agent identity &mdash; Scalekit &middot; Actian &middot; Render</div>
+      <div class="brand-sub">Scalekit &middot; Actian &middot; Render</div>
     </div>
   </div>
 
@@ -24,7 +24,6 @@
           <div class="avatar avatar-{{ actor.role }}">{{ actor.display_name[0] }}</div>
           <div class="user-menu-info">
             <span class="user-menu-name">{{ actor.display_name }}</span>
-            <span class="role-chip role-{{ actor.role }}">{{ actor.role|title }}</span>
           </div>
           <svg class="chevron-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -33,10 +32,9 @@
         <div class="user-menu-dropdown">
           <div class="menu-section-label">Switch user</div>
           {% for demo_actor in actors %}
-            {% if demo_actor.actor_id != actor.actor_id %}
               <form method="post" action="/demo/login">
                 <input type="hidden" name="actor_id" value="{{ demo_actor.actor_id }}">
-                <button type="submit" class="menu-item">
+                <button type="submit" class="menu-item{% if demo_actor.actor_id == actor.actor_id %} menu-item-active{% endif %}">
                   <div class="avatar avatar-sm avatar-{{ demo_actor.role }}">{{ demo_actor.display_name[0] }}</div>
                   <div>
                     <div class="menu-item-name">{{ demo_actor.display_name }}</div>
@@ -44,7 +42,6 @@
                   </div>
                 </button>
               </form>
-            {% endif %}
           {% endfor %}
           <div class="menu-divider"></div>
           <form method="post" action="/demo/logout">
@@ -159,10 +156,36 @@
               </div>
             {% endif %}
             <div class="action-zone">
-              <p class="action-hint">Quote ready. Send it to the customer via Sara&rsquo;s connected Gmail account through Scalekit.</p>
-              <form method="post" action="/quote/send">
-                <button type="submit" class="btn btn-primary">Send quote to {{ job_a.customer_name }}</button>
-              </form>
+              <p class="action-hint">Quote ready. Review the draft, make any changes, then send via Sara&rsquo;s Gmail through Scalekit.</p>
+              <button type="button" class="btn btn-primary" onclick="openEmailModal()">Send quote to {{ job_a.customer_name }}</button>
+            </div>
+
+            <!-- Email compose modal -->
+            <div id="email-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeEmailModal()">
+              <div class="modal-box">
+                <div class="modal-header">
+                  <span class="modal-title">Review &amp; send email</span>
+                  <button type="button" class="modal-close" onclick="closeEmailModal()" aria-label="Close">&times;</button>
+                </div>
+                <form method="post" action="/quote/send" id="email-compose-form">
+                  <div class="modal-field">
+                    <label class="modal-label" for="email-to">To</label>
+                    <input id="email-to" class="modal-input modal-input-readonly" type="text" value="{{ job_a.customer_email }}" readonly>
+                  </div>
+                  <div class="modal-field">
+                    <label class="modal-label" for="email-subject">Subject</label>
+                    <input id="email-subject" name="subject" class="modal-input" type="text" value="Repair quote for {{ job_a.vehicle }}">
+                  </div>
+                  <div class="modal-field">
+                    <label class="modal-label" for="email-body">Body</label>
+                    <textarea id="email-body" name="body" class="modal-textarea" rows="7">{{ job_a.quote_text or '' }}</textarea>
+                  </div>
+                  <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeEmailModal()">Discard</button>
+                    <button type="submit" class="btn btn-primary">Send via Gmail</button>
+                  </div>
+                </form>
+              </div>
             </div>
 
           {% elif job_a.job_status == "quote_sent" %}
@@ -353,5 +376,28 @@
   </div>
 {% endif %}
 
+<script>
+  function openEmailModal() {
+    var modal = document.getElementById('email-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    var subjectEl = document.getElementById('email-subject');
+    if (subjectEl) subjectEl.focus();
+  }
+
+  function closeEmailModal() {
+    var modal = document.getElementById('email-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    var form = document.getElementById('email-compose-form');
+    if (form) form.reset();
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeEmailModal();
+  });
+</script>
 </body>
 </html>
