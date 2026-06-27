@@ -102,8 +102,9 @@ def _gmail_draft_input(
 ) -> dict[str, str]:
     body = body_override or str(job.get("quote_text") or f"Repair quote for {job['vehicle']}: diagnosis pending.")
     subject = subject_override or f"Repair quote for {job['vehicle']}"
+    to = str(job.get("customer_email") or config.demo_to_email)
     return {
-        "to": str(config.demo_to_email),
+        "to": to,
         "subject": subject,
         "body": body,
     }
