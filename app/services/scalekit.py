@@ -94,16 +94,27 @@ def _tool_names(tools_response: Any) -> set[str]:
     return names
 
 
-def _gmail_draft_input(config: ScalekitConfig, job: dict[str, Any]) -> dict[str, str]:
-    body = str(job.get("quote_text") or f"Repair quote for {job['vehicle']}: diagnosis pending.")
+def _gmail_draft_input(
+    config: ScalekitConfig,
+    job: dict[str, Any],
+    subject_override: str | None = None,
+    body_override: str | None = None,
+) -> dict[str, str]:
+    body = body_override or str(job.get("quote_text") or f"Repair quote for {job['vehicle']}: diagnosis pending.")
+    subject = subject_override or f"Repair quote for {job['vehicle']}"
     return {
         "to": str(config.demo_to_email),
-        "subject": f"Repair quote for {job['vehicle']}",
+        "subject": subject,
         "body": body,
     }
 
 
-def send_customer_email_as_actor(actor: Actor, job: dict[str, Any]) -> ToolResult:
+def send_customer_email_as_actor(
+    actor: Actor,
+    job: dict[str, Any],
+    subject_override: str | None = None,
+    body_override: str | None = None,
+) -> ToolResult:
     config = ScalekitConfig.from_env()
     if config.mode == "real":
         missing = config.missing_real_mode_vars()
@@ -158,7 +169,7 @@ def send_customer_email_as_actor(actor: Actor, job: dict[str, Any]) -> ToolResul
 
         try:
             execution = actions.execute_tool(
-                tool_input=_gmail_draft_input(config, job),
+                tool_input=_gmail_draft_input(config, job, subject_override, body_override),
                 tool_name=str(config.gmail_send_tool_name),
                 identifier=actor.scalekit_identifier,
             )

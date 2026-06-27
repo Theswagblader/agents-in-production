@@ -196,7 +196,11 @@ def quote_draft(job_id: str = Form(...), demo_actor_id: str | None = Cookie(defa
 
 
 @app.post("/quote/send")
-def quote_send(demo_actor_id: str | None = Cookie(default=None)) -> RedirectResponse:
+def quote_send(
+    demo_actor_id: str | None = Cookie(default=None),
+    subject: str | None = Form(default=None),
+    body: str | None = Form(default=None),
+) -> RedirectResponse:
     actor = get_actor_from_cookie(demo_actor_id)
     job = get_job("job_a")
     if actor is None or job is None:
@@ -218,7 +222,7 @@ def quote_send(demo_actor_id: str | None = Cookie(default=None)) -> RedirectResp
         )
         return RedirectResponse("/", status_code=303)
 
-    result = send_customer_email_as_actor(actor, job)
+    result = send_customer_email_as_actor(actor, job, subject_override=subject or None, body_override=body or None)
     if result.outcome in ("succeeded", "allowed"):
         update_job("job_a", job_status="quote_sent")
     _record_tool_result(
