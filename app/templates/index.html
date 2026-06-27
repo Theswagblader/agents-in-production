@@ -140,51 +140,79 @@
             {% if job_a.quote_amount %}
               <div class="quote-amount">${{ job_a.quote_amount }}</div>
             {% endif %}
-            {% if job_a.quote_text %}
-              <blockquote class="quote-text">{{ job_a.quote_text }}</blockquote>
-            {% endif %}
-            {% if job_a_comparables %}
-              <div class="comparables">
-                <div class="comparables-label">Actian comparables</div>
-                {% for c in job_a_comparables %}
-                  <div class="comparable-row">
-                    <div class="comparable-vehicle">{{ c.vehicle }}</div>
-                    <div class="comparable-symptom">{{ c.symptom }}</div>
-                    <div class="comparable-price">${{ c.final_price }}</div>
-                  </div>
-                {% endfor %}
-              </div>
-            {% endif %}
             <div class="action-zone">
-              <p class="action-hint">Quote ready. Review the draft, make any changes, then send via Sara&rsquo;s Gmail through Scalekit.</p>
+              <p class="action-hint">Quote ready. Review the draft and Actian comparables, then send via Sara&rsquo;s Gmail through Scalekit.</p>
               <button type="button" class="btn btn-primary" onclick="openEmailModal()">Send quote to {{ job_a.customer_name }}</button>
             </div>
 
-            <!-- Email compose modal -->
+            <!-- Email + comparables modal -->
             <div id="email-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeEmailModal()">
-              <div class="modal-box">
+              <div class="modal-box modal-box-wide">
                 <div class="modal-header">
-                  <span class="modal-title">Review &amp; send email</span>
+                  <div class="modal-tabs">
+                    <button type="button" class="modal-tab modal-tab-active" onclick="switchTab('email')">Email</button>
+                    <button type="button" class="modal-tab" onclick="switchTab('comparables')">Similar Quotes{% if job_a_comparables %} <span class="modal-tab-badge">{{ job_a_comparables | length }}</span>{% endif %}</button>
+                  </div>
                   <button type="button" class="modal-close" onclick="closeEmailModal()" aria-label="Close">&times;</button>
                 </div>
-                <form method="post" action="/quote/send" id="email-compose-form">
-                  <div class="modal-field">
-                    <label class="modal-label" for="email-to">To</label>
-                    <input id="email-to" class="modal-input modal-input-readonly" type="text" value="{{ job_a.customer_email }}" readonly>
-                  </div>
-                  <div class="modal-field">
-                    <label class="modal-label" for="email-subject">Subject</label>
-                    <input id="email-subject" name="subject" class="modal-input" type="text" value="Repair quote for {{ job_a.vehicle }}">
-                  </div>
-                  <div class="modal-field">
-                    <label class="modal-label" for="email-body">Body</label>
-                    <textarea id="email-body" name="body" class="modal-textarea" rows="7">{{ job_a.quote_text or '' }}</textarea>
-                  </div>
+
+                <!-- Email tab -->
+                <div id="modal-tab-email" class="modal-tab-panel">
+                  <form method="post" action="/quote/send" id="email-compose-form">
+                    <div class="modal-field">
+                      <label class="modal-label" for="email-to">To</label>
+                      <input id="email-to" class="modal-input modal-input-readonly" type="text" value="{{ job_a.customer_email }}" readonly>
+                    </div>
+                    <div class="modal-field">
+                      <label class="modal-label" for="email-subject">Subject</label>
+                      <input id="email-subject" name="subject" class="modal-input" type="text" value="Repair quote for {{ job_a.vehicle }}">
+                    </div>
+                    <div class="modal-field">
+                      <label class="modal-label" for="email-body">Body</label>
+                      <textarea id="email-body" name="body" class="modal-textarea" rows="7">{{ job_a.quote_text or '' }}</textarea>
+                    </div>
+                    <div class="modal-actions">
+                      <button type="button" class="btn btn-ghost" onclick="closeEmailModal()">Discard</button>
+                      <button type="submit" class="btn btn-primary">Send via Gmail</button>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- Similar Quotes tab -->
+                <div id="modal-tab-comparables" class="modal-tab-panel" style="display:none">
+                  {% if job_a_comparables %}
+                    <div class="comp-list">
+                      {% for c in job_a_comparables %}
+                        <div class="comp-card">
+                          <div class="comp-card-top">
+                            <div>
+                              <div class="comp-vehicle">{{ c.vehicle }}</div>
+                              <div class="comp-symptom">{{ c.symptom }}</div>
+                            </div>
+                            <div class="comp-price">${{ c.final_price }}</div>
+                          </div>
+                          {% if c.parts %}
+                            <div class="comp-parts">
+                              {% for part in c.parts %}
+                                <span class="comp-part-tag">{{ part }}</span>
+                              {% endfor %}
+                            </div>
+                          {% endif %}
+                          <div class="comp-meta">
+                            <span>{{ c.labor_hours }}h labor</span>
+                            {% if c.notes %}<span class="comp-notes">{{ c.notes }}</span>{% endif %}
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <div class="comp-empty">No comparable quotes found.</div>
+                  {% endif %}
                   <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" onclick="closeEmailModal()">Discard</button>
-                    <button type="submit" class="btn btn-primary">Send via Gmail</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeEmailModal()">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="switchTab('email')">Back to Email</button>
                   </div>
-                </form>
+                </div>
               </div>
             </div>
 
@@ -380,6 +408,7 @@
   function openEmailModal() {
     var modal = document.getElementById('email-modal');
     if (!modal) return;
+    switchTab('email');
     modal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
     var subjectEl = document.getElementById('email-subject');
@@ -393,6 +422,16 @@
     document.body.style.overflow = '';
     var form = document.getElementById('email-compose-form');
     if (form) form.reset();
+  }
+
+  function switchTab(name) {
+    var tabs = ['email', 'comparables'];
+    tabs.forEach(function(t) {
+      var panel = document.getElementById('modal-tab-' + t);
+      var btn = document.querySelector('.modal-tab[onclick="switchTab(\'' + t + '\')"]');
+      if (panel) panel.style.display = t === name ? 'block' : 'none';
+      if (btn) btn.classList.toggle('modal-tab-active', t === name);
+    });
   }
 
   document.addEventListener('keydown', function(e) {
