@@ -174,3 +174,59 @@ def test_dashboard_renders_identity_workflow_and_audit(client):
     assert "Audit" in response.text
     assert "Theo tries customer email" in response.text
     assert "Jordan tries Theo's job" in response.text
+
+
+from app.services import scalekit as scalekit_service
+
+
+class WorkflowFakeTools:
+    def list_scoped_tools(self, identifier: str, **kwargs):
+        return type("ToolsResponse", (), {
+            "tools": [type("Tool", (), {"name": "gmail_create_draft"})()]
+        })()
+
+
+class WorkflowFakeActions:
+    def __init__(self):
+        self.tools = WorkflowFakeTools()
+        self.execute_calls = []
+
+    def execute_tool(self, **kwargs):
+        self.execute_calls.append(kwargs)
+        return type("Execution", (), {"execution_id": "exec_route_123", "data": {}})()
+
+
+def test_quote_send_real_mode_audits_cookie_actor_not_form_identity(client, monkeypatch):
+    monkeypatch.setenv("SCALEKIT_MODE", "real")
+    monkeypatch.setenv("SCALEKIT_ENV_URL", "https://example.scalekit.dev")
+    monkeypatch.setenv("SCALEKIT_CLIENT_ID", "client_123")
+    monkeypatch.setenv("SCALEKIT_CLIENT_SECRET", "secret_123")
+    monkeypatch.setenv("SCALEKIT_GMAIL_SEND_TOOL_NAME", "gmail_create_draft")
+    monkeypatch.setenv("SHOPFLOOR_DEMO_TO_EMAIL", "demo-recipient@example.com")
+    fake_actions = WorkflowFakeActions()
+    scalekit_service.set_scalekit_client_factory(lambda: fake_actions)
+
+    client.cookies.set("demo_actor_id", "sales_sara")
+    client.post("/quote/draft", data={"job_id": "job_a"})
+
+    try:
+        response = client.post(
+            "/quote/send",
+            data={
+                "actor_id": "tech_jordan",
+                "role": "technician",
+                "scalekit_identifier": "tech_jordan",
+                "connected_account_id": "ca_attacker",
+            },
+            follow_redirects=False,
+        )
+    finally:
+        scalekit_service.set_scalekit_client_factory(None)
+
+    assert response.status_code == 303
+    assert fake_actions.execute_calls[0]["identifier"] == "sales_sara"
+    events = client.get("/audit").json()["events"]
+    last = events[-1]
+    assert last["actor_id"] == "sales_sara"
+    assert last["decision_source"] == "scalekit_execute_tool"
+    assert last["external_request_id"] == "exec_route_123"
