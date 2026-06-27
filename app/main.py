@@ -126,6 +126,8 @@ def _build_template_context(request: Request, demo_actor_id: str | None) -> dict
         "job_a": job_a_data,
         "job_a_comparables": job_a_comparables,
         "audit_events": list_audit_events(),
+        "inventory": list_inventory(),
+        "part_orders": list_part_orders(),
     }
 
 
@@ -648,6 +650,46 @@ def inventory_page(request: Request, demo_actor_id: str | None = Cookie(default=
         "inventory.html",
         _inventory_template_context(request, demo_actor_id),
     )
+
+
+@app.post("/inventory/item/{item_id}/update-stock")
+def update_stock(
+    item_id: str,
+    quantity: int = Form(...),
+    mode: str = Form(default="set"),
+    demo_actor_id: str | None = Cookie(default=None),
+) -> RedirectResponse:
+    actor = get_actor_from_cookie(demo_actor_id)
+    if actor is None or actor.role not in ("manager", "technician"):
+        return RedirectResponse("/inventory", status_code=303)
+
+    item = get_inventory_item(item_id)
+    if item is None:
+        return RedirectResponse("/inventory", status_code=303)
+
+    old_qty = int(item["quantity"])
+    if mode == "add":
+        new_qty = old_qty + quantity
+    elif mode == "subtract":
+        new_qty = max(0, old_qty - quantity)
+    else:
+        new_qty = max(0, quantity)
+
+    update_inventory_item(item_id, quantity=new_qty)
+    record_audit(
+        actor_id=actor.actor_id,
+        actor_name=actor.display_name,
+        actor_role=actor.role,
+        action="update_stock",
+        target_type="inventory_item",
+        target_id=item_id,
+        provider=None,
+        tool_name=None,
+        decision_source="backend_policy",
+        outcome="succeeded",
+        detail=f"{item['name']}: {old_qty} → {new_qty} (mode: {mode}).",
+    )
+    return RedirectResponse("/inventory", status_code=303)
 
 
 @app.post("/inventory/order/create")

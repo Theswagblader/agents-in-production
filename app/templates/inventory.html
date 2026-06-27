@@ -4,22 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ShopFloor &mdash; Inventory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
 </head>
 <body>
 
 <header class="topbar">
   <div class="topbar-brand">
-    <span class="brand-mark">SF</span>
+    <span class="brand-mark">C</span>
     <div>
-      <div class="brand-name">ShopFloor</div>
-      <div class="brand-sub">Scalekit &middot; Actian &middot; Render</div>
+      <div class="brand-name">Clearance</div>
     </div>
   </div>
-  <nav class="topbar-nav">
-    <a href="/" class="nav-link">Jobs</a>
-    <a href="/inventory" class="nav-link nav-link-active">Inventory</a>
-  </nav>
   <div class="topbar-right">
     {% if actor %}
       <details class="user-menu">
@@ -65,7 +62,6 @@
     <!-- Page title + new order button -->
     <div class="workspace-title">
       <h2>Parts Inventory</h2>
-      <span class="role-chip role-{{ actor.role }}">{{ actor.display_name }}&rsquo;s view</span>
       {% if actor.role in ("manager", "technician") %}
         <button type="button" class="btn btn-primary inv-new-btn" onclick="openOrderModal()">+ New Part Order</button>
       {% endif %}
@@ -87,6 +83,7 @@
             <th>Last Ordered</th>
             <th>Supplier</th>
             <th>Location</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -118,6 +115,12 @@
               <td class="inv-muted">{{ item.last_ordered or '—' }}</td>
               <td class="inv-muted inv-supplier">{{ item.supplier_name }}</td>
               <td class="inv-mono inv-muted">{{ item.location or '—' }}</td>
+              <td>
+                <button type="button" class="btn-update-stock js-update-stock"
+                  data-item-id="{{ item.item_id }}"
+                  data-item-name="{{ item.name }}"
+                  data-qty="{{ item.quantity }}">Update</button>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
@@ -146,7 +149,13 @@
                   </form>
                 {% endif %}
                 {% if order.status == "approved" and actor.actor_id == "manager_maya" %}
-                  <button type="button" class="btn btn-primary btn-sm" onclick="openEmailModal('{{ order.order_id }}', '{{ order.item_name | replace("'", "\\'") }}', '{{ order.part_number }}', {{ order.quantity_ordered }}, '{{ order.supplier_name | replace("'", "\\'") }}', '{{ order.supplier_email }}')">Send Email</button>
+                  <button type="button" class="btn btn-primary btn-sm js-send-email"
+                    data-order-id="{{ order.order_id }}"
+                    data-item-name="{{ order.item_name }}"
+                    data-part-number="{{ order.part_number }}"
+                    data-qty="{{ order.quantity_ordered }}"
+                    data-supplier-name="{{ order.supplier_name }}"
+                    data-supplier-email="{{ order.supplier_email }}">Send Email</button>
                 {% endif %}
               </div>
             </div>
@@ -225,7 +234,7 @@
 </div>
 
 <!-- New Part Order modal -->
-<div id="order-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeOrderModal()">
+<div id="order-modal" class="modal-backdrop" onclick="if(event.target===this)closeOrderModal()">
   <div class="modal-box">
     <div class="modal-header">
       <span class="modal-title">New Part Order</span>
@@ -286,8 +295,44 @@
   </div>
 </div>
 
+<!-- Update Stock modal -->
+<div id="stock-modal" class="modal-backdrop" onclick="if(event.target===this)closeStockModal()">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-header">
+      <span class="modal-title" id="stock-modal-title">Update Stock</span>
+      <button type="button" class="modal-close" onclick="closeStockModal()" aria-label="Close">&times;</button>
+    </div>
+    <form method="post" id="stock-form">
+      <div class="modal-field">
+        <label class="modal-label">Current Quantity</label>
+        <input id="stock-current" class="modal-input modal-input-readonly" type="text" readonly>
+      </div>
+      <div class="modal-field" style="padding-bottom:16px">
+        <label class="modal-label" for="stock-mode">Adjustment</label>
+        <div class="stock-mode-row">
+          <label class="stock-radio">
+            <input type="radio" name="mode" value="set" checked onchange="updateStockPreview()"> Set to exact
+          </label>
+          <label class="stock-radio">
+            <input type="radio" name="mode" value="add" onchange="updateStockPreview()"> Add units
+          </label>
+          <label class="stock-radio">
+            <input type="radio" name="mode" value="subtract" onchange="updateStockPreview()"> Remove units
+          </label>
+        </div>
+        <input id="stock-value" name="quantity" class="modal-input" type="number" min="0" value="0" style="margin-top:8px" oninput="updateStockPreview()">
+        <div id="stock-preview" class="stock-preview"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeStockModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Send Email modal (manager approves a tech order then sends) -->
-<div id="email-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeEmailModal()">
+<div id="email-modal" class="modal-backdrop" onclick="if(event.target===this)closeEmailModal()">
   <div class="modal-box">
     <div class="modal-header">
       <span class="modal-title">Send Part Order Email</span>
@@ -316,12 +361,12 @@
 
 <script>
   function openOrderModal() {
-    document.getElementById('order-modal').style.display = 'flex';
+    document.getElementById('order-modal').classList.add('modal-open');
     document.body.style.overflow = 'hidden';
   }
 
   function closeOrderModal() {
-    document.getElementById('order-modal').style.display = 'none';
+    document.getElementById('order-modal').classList.remove('modal-open');
     document.body.style.overflow = '';
     document.getElementById('order-form').reset();
   }
@@ -347,10 +392,7 @@
       'Thank you,\nMaya Chen\nShopFloor Manager';
   }
 
-  document.getElementById('order-qty') && document.getElementById('order-qty').addEventListener('input', function() {
-    var sel = document.getElementById('order-item');
-    if (sel && sel.value) updateOrderDefaults(sel);
-  });
+  var _stockCurrent = 0;
 
   function openEmailModal(orderId, itemName, partNumber, qty, supplierName, supplierEmail) {
     var modal = document.getElementById('email-modal');
@@ -367,17 +409,77 @@
       '  Quantity: ' + qty + '\n\n' +
       'Please confirm availability and expected delivery timeline.\n\n' +
       'Thank you,\nMaya Chen\nShopFloor Manager';
-    modal.style.display = 'flex';
+    modal.classList.add('modal-open');
     document.body.style.overflow = 'hidden';
   }
 
   function closeEmailModal() {
-    document.getElementById('email-modal').style.display = 'none';
+    document.getElementById('email-modal').classList.remove('modal-open');
     document.body.style.overflow = '';
   }
 
+  function openStockModal(itemId, itemName, currentQty) {
+    _stockCurrent = currentQty;
+    document.getElementById('stock-modal-title').textContent = 'Update Stock — ' + itemName;
+    document.getElementById('stock-current').value = currentQty;
+    document.getElementById('stock-value').value = currentQty;
+    document.getElementById('stock-form').action = '/inventory/item/' + itemId + '/update-stock';
+    document.querySelectorAll('input[name="mode"]')[0].checked = true;
+    updateStockPreview();
+    document.getElementById('stock-modal').classList.add('modal-open');
+    document.body.style.overflow = 'hidden';
+    document.getElementById('stock-value').focus();
+  }
+
+  function closeStockModal() {
+    document.getElementById('stock-modal').classList.remove('modal-open');
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    // Wire up qty input refresh for order defaults
+    var qtyEl = document.getElementById('order-qty');
+    if (qtyEl) {
+      qtyEl.addEventListener('input', function() {
+        var sel = document.getElementById('order-item');
+        if (sel && sel.value) updateOrderDefaults(sel);
+      });
+    }
+
+    // Update stock buttons (data-* attributes, no inline JS)
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('.js-update-stock');
+      if (btn) {
+        openStockModal(btn.dataset.itemId, btn.dataset.itemName, parseInt(btn.dataset.qty));
+      }
+      var emailBtn = e.target.closest('.js-send-email');
+      if (emailBtn) {
+        openEmailModal(
+          emailBtn.dataset.orderId,
+          emailBtn.dataset.itemName,
+          emailBtn.dataset.partNumber,
+          emailBtn.dataset.qty,
+          emailBtn.dataset.supplierName,
+          emailBtn.dataset.supplierEmail
+        );
+      }
+    });
+  });
+
+  function updateStockPreview() {
+    var mode = document.querySelector('input[name="mode"]:checked').value;
+    var val  = parseInt(document.getElementById('stock-value').value) || 0;
+    var result;
+    if (mode === 'set')      result = val;
+    else if (mode === 'add') result = _stockCurrent + val;
+    else                     result = Math.max(0, _stockCurrent - val);
+    var el = document.getElementById('stock-preview');
+    el.textContent = '→ New quantity: ' + result;
+    el.className = 'stock-preview' + (result <= 0 ? ' stock-preview-warn' : '');
+  }
+
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') { closeOrderModal(); closeEmailModal(); }
+    if (e.key === 'Escape') { closeOrderModal(); closeEmailModal(); closeStockModal(); }
   });
 </script>
 </body>
