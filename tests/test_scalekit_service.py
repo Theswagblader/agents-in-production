@@ -2,6 +2,7 @@ import pytest
 
 from app.actors import ACTORS
 from app.services.scalekit import send_customer_email_as_actor
+from app.services import scalekit as scalekit_service
 
 
 @pytest.fixture
@@ -35,3 +36,53 @@ def test_real_mode_reports_missing_scalekit_config(monkeypatch, quoted_job):
     assert result.decision_source == "scalekit_config"
     assert "Missing required Scalekit env vars" in result.detail
     assert "SCALEKIT_CLIENT_SECRET" in result.detail
+
+
+class FakeTools:
+    def __init__(self, tool_names: list[str]):
+        self.tool_names = tool_names
+        self.calls: list[dict] = []
+
+    def list_scoped_tools(self, identifier: str, **kwargs):
+        self.calls.append({"identifier": identifier})
+        tools = [type("Tool", (), {"name": name})() for name in self.tool_names]
+        return type("ToolsResponse", (), {"tools": tools})()
+
+
+class FakeActions:
+    def __init__(self, tool_names: list[str]):
+        self.tools = FakeTools(tool_names)
+        self.execute_calls: list[dict] = []
+
+    def execute_tool(self, **kwargs):
+        self.execute_calls.append(kwargs)
+        return type("Execution", (), {"execution_id": "exec_fake_123", "data": {"ok": True}})()
+
+
+def configure_real_mode(monkeypatch):
+    monkeypatch.setenv("SCALEKIT_MODE", "real")
+    monkeypatch.setenv("SCALEKIT_ENV_URL", "https://example.scalekit.dev")
+    monkeypatch.setenv("SCALEKIT_CLIENT_ID", "client_123")
+    monkeypatch.setenv("SCALEKIT_CLIENT_SECRET", "secret_123")
+    monkeypatch.setenv("SCALEKIT_GMAIL_SEND_TOOL_NAME", "gmail_create_draft")
+    monkeypatch.setenv("SHOPFLOOR_DEMO_TO_EMAIL", "demo-recipient@example.com")
+
+
+def test_real_mode_denies_theo_when_gmail_tool_not_in_scoped_tools(monkeypatch, quoted_job):
+    configure_real_mode(monkeypatch)
+    fake_actions = FakeActions(tool_names=["notion.pages.update"])
+    scalekit_service.set_scalekit_client_factory(lambda: fake_actions)
+
+    try:
+        result = send_customer_email_as_actor(ACTORS["tech_theo"], quoted_job)
+    finally:
+        scalekit_service.set_scalekit_client_factory(None)
+
+    assert fake_actions.tools.calls == [{"identifier": "tech_theo"}]
+    assert fake_actions.execute_calls == []
+    assert result.ok is False
+    assert result.outcome == "denied"
+    assert result.provider == "gmail"
+    assert result.tool_name == "gmail_create_draft"
+    assert result.decision_source == "scalekit_tool_scope"
+    assert "does not have the Gmail customer-email tool" in result.detail

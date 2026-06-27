@@ -1,7 +1,7 @@
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from app.actors import Actor
 
@@ -50,6 +50,39 @@ class ScalekitConfig:
         return [name for name, value in required.items() if not value]
 
 
+class ScalekitActionsClient(Protocol):
+    tools: Any
+
+    def execute_tool(self, **kwargs) -> Any: ...
+
+
+_scalekit_client_factory: Callable[[], ScalekitActionsClient] | None = None
+
+
+def set_scalekit_client_factory(factory: Callable[[], ScalekitActionsClient] | None) -> None:
+    global _scalekit_client_factory
+    _scalekit_client_factory = factory
+
+
+def _get_scalekit_actions_client(config: ScalekitConfig) -> ScalekitActionsClient:
+    if _scalekit_client_factory is not None:
+        return _scalekit_client_factory()
+    try:
+        from scalekit import ScalekitClient
+    except ImportError as exc:
+        raise RuntimeError("scalekit-sdk-python is not installed.") from exc
+    client = ScalekitClient(
+        env_url=config.env_url,
+        client_id=config.client_id,
+        client_secret=config.client_secret,
+    )
+    return client.actions
+
+
+def _tool_names(tools_response: Any) -> set[str]:
+    return {str(tool.name) for tool in getattr(tools_response, "tools", [])}
+
+
 def send_customer_email_as_actor(actor: Actor, job: dict[str, Any]) -> ToolResult:
     config = ScalekitConfig.from_env()
     if config.mode == "real":
@@ -62,6 +95,45 @@ def send_customer_email_as_actor(actor: Actor, job: dict[str, Any]) -> ToolResul
                 tool_name=None,
                 decision_source="scalekit_config",
                 detail=f"Missing required Scalekit env vars for real mode: {', '.join(missing)}.",
+            )
+
+        try:
+            actions = _get_scalekit_actions_client(config)
+            try:
+                from scalekit.v1.tools.tools_pb2 import ScopedToolFilter
+                scoped_filter = ScopedToolFilter(connection_names=[config.gmail_connection_name])
+            except ImportError:
+                scoped_filter = None
+
+            list_kwargs: dict[str, Any] = {"identifier": actor.scalekit_identifier}
+            if scoped_filter is not None:
+                list_kwargs["filter"] = scoped_filter
+
+            tools_response = actions.tools.list_scoped_tools(**list_kwargs)
+        except Exception as exc:
+            return ToolResult(
+                ok=False,
+                outcome="denied",
+                provider="gmail",
+                tool_name=config.gmail_send_tool_name,
+                decision_source="scalekit_tool_scope",
+                detail=(
+                    f"REAL Scalekit denial: {actor.display_name} has not delegated this "
+                    f"customer-email capability ({exc.__class__.__name__}: {exc})."
+                ),
+            )
+
+        if config.gmail_send_tool_name not in _tool_names(tools_response):
+            return ToolResult(
+                ok=False,
+                outcome="denied",
+                provider="gmail",
+                tool_name=config.gmail_send_tool_name,
+                decision_source="scalekit_tool_scope",
+                detail=(
+                    f"REAL Scalekit denial: {actor.display_name} does not have the Gmail "
+                    "customer-email tool in scoped tools."
+                ),
             )
 
     if actor.actor_id != "sales_sara":
