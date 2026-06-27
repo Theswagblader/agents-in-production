@@ -17,6 +17,13 @@
     </div>
   </div>
 
+  <nav class="topbar-nav">
+    <a href="/" class="nav-link nav-link-active">Jobs</a>
+    {% if actor and actor.role in ("manager", "technician") %}
+      <a href="/inventory" class="nav-link">Inventory</a>
+    {% endif %}
+  </nav>
+
   <div class="topbar-right">
     {% if actor %}
       <details class="user-menu">
@@ -79,11 +86,11 @@
               {% if demo_actor.actor_id == "sales_sara" %}
                 Receives requests &middot; drafts &amp; sends quotes via Gmail (Scalekit)
               {% elif demo_actor.actor_id == "manager_maya" %}
-                Approves jobs &middot; writes CRM records via Notion (Scalekit)
+                Approves jobs &amp; part orders &middot; sends supplier emails &middot; CRM via Notion
               {% elif demo_actor.actor_id == "tech_theo" %}
-                Assigned to Job A &middot; completes repairs via Notion (Scalekit)
+                Assigned to Job A &middot; completes repairs &middot; submits part order requests
               {% else %}
-                Not assigned to Job A &middot; triggers the wrong-job denial
+                Not assigned to Job A &middot; submits part orders &middot; triggers wrong-job denial
               {% endif %}
             </div>
           </button>
