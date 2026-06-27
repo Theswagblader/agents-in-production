@@ -52,3 +52,54 @@ def test_sara_can_draft_quote_with_stubbed_comparables(client):
     assert events[-1]["decision_source"] == "actian_retrieval"
     assert events[-1]["outcome"] == "succeeded"
     assert "stubbed comparables" in events[-1]["detail"]
+
+
+def test_sara_can_send_quote_email_in_stub_mode(client):
+    client.cookies.set("demo_actor_id", "sales_sara")
+    client.post("/quote/draft", data={"job_id": "job_a"})
+
+    response = client.post(
+        "/quote/send",
+        data={"actor_id": "tech_jordan", "role": "technician"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    events = client.get("/audit").json()["events"]
+    assert events[-1]["actor_id"] == "sales_sara"
+    assert events[-1]["provider"] == "gmail"
+    assert events[-1]["tool_name"] == "gmail.send_email"
+    assert events[-1]["outcome"] == "succeeded"
+    assert "STUBBED" in events[-1]["detail"]
+
+
+def test_maya_can_approve_job_in_stub_mode(client):
+    client.cookies.set("demo_actor_id", "manager_maya")
+
+    response = client.post("/jobs/job_a/approve", follow_redirects=False)
+
+    assert response.status_code == 303
+    job_a = next(job for job in client.get("/jobs").json()["jobs"] if job["job_id"] == "job_a")
+    assert job_a["job_status"] == "approved"
+    events = client.get("/audit").json()["events"]
+    assert events[-1]["actor_id"] == "manager_maya"
+    assert events[-1]["provider"] in {"notion", "slack"}
+    assert events[-1]["outcome"] == "succeeded"
+
+
+def test_theo_can_complete_assigned_job_in_stub_mode(client):
+    client.cookies.set("demo_actor_id", "tech_theo")
+
+    response = client.post(
+        "/jobs/job_a/complete",
+        data={"summary": "Replaced front brake pads."},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    job_a = next(job for job in client.get("/jobs").json()["jobs"] if job["job_id"] == "job_a")
+    assert job_a["job_status"] == "completed"
+    assert job_a["completion_summary"] == "Replaced front brake pads."
+    events = client.get("/audit").json()["events"]
+    assert events[-1]["actor_id"] == "tech_theo"
+    assert events[-1]["outcome"] == "succeeded"
