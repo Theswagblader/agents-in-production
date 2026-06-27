@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ShopFloor &mdash; Inventory</title>
+  <title>Clearance &mdash; Inventory</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
@@ -15,6 +15,7 @@
     <span class="brand-mark">C</span>
     <div>
       <div class="brand-name">Clearance</div>
+      <div class="brand-sub">Scalekit &middot; Actian &middot; Render</div>
     </div>
   </div>
   <div class="topbar-right">
@@ -389,7 +390,7 @@
       '  Part Number: ' + pn + '\n' +
       '  Quantity: ' + qty + '\n\n' +
       'Please confirm availability and expected delivery timeline.\n\n' +
-      'Thank you,\nMaya Chen\nShopFloor Manager';
+      'Thank you,\nMaya Chen\nClearance Manager';
   }
 
   var _stockCurrent = 0;
@@ -408,7 +409,7 @@
       '  Part Number: ' + partNumber + '\n' +
       '  Quantity: ' + qty + '\n\n' +
       'Please confirm availability and expected delivery timeline.\n\n' +
-      'Thank you,\nMaya Chen\nShopFloor Manager';
+      'Thank you,\nMaya Chen\nClearance Manager';
     modal.classList.add('modal-open');
     document.body.style.overflow = 'hidden';
   }

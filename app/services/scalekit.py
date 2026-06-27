@@ -244,7 +244,7 @@ def send_supplier_email_as_actor(
         f"  Quantity: {qty}\n"
         f"  Order Reference: {order_id}\n\n"
         f"Please confirm availability and expected delivery timeline.\n\n"
-        f"Thank you,\nMaya Chen\nShopFloor Manager"
+        f"Thank you,\nMaya Chen\nClearance Manager"
     )
 
     subject = subject_override or default_subject
