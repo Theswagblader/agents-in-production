@@ -4,8 +4,14 @@ jinja2==3.1.4
 python-multipart==0.0.19
 pytest==8.3.4
 httpx==0.28.1
-scalekit-sdk-python==2.12.0
-grpcio-status==1.72.2
+grpcio>=1.64.1
+googleapis-common-protos>=1.72.0
+protoc-gen-openapiv2>=0.0.1
+PyJWT>=2.12.0
+cryptography<47,==46.0.6
+google>=3.0
+deprecation>=2.1.0
+mcp>=1.23.0
 protobuf>=6.31.1,<7.0.0
 actian-vectorai-client
 sentence-transformers

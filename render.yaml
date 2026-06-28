@@ -2,6 +2,6 @@ services:
   - type: web
     name: clearance
     env: python
-    buildCommand: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install --no-deps scalekit-sdk-python==2.12.0 && pip install -r requirements.txt
+    buildCommand: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install --no-deps scalekit-sdk-python==2.12.0 && pip install --no-deps grpcio-status==1.72.2 && pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
