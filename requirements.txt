@@ -5,8 +5,9 @@ python-multipart==0.0.19
 pytest==8.3.4
 httpx==0.28.1
 scalekit-sdk-python==2.12.0
-actian-vectorai-client
+grpcio-status==1.72.2
 protobuf>=6.31.1,<7.0.0
+actian-vectorai-client
 sentence-transformers
 python-dotenv
 anthropic
